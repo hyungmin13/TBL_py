@@ -258,7 +258,7 @@ if __name__=="__main__":
 
     # Set problem params
     viscosity = 15e-6
-    loss_weights = (1.0, 1.0, 1.0, 0.000001, 0.000001, 0.000001, 0.000001, 1.0)
+    loss_weights = (1.0, 1.0, 1.0, 0.0000001, 0.00000001, 0.00000001, 0.00000001, 1.0)
     path_s = '/scratch/hyun/Ground/'
     problem_name = 'TBL'
     # Set optimization params
