@@ -235,7 +235,7 @@ if __name__=="__main__":
     from PINN_network import *
     from PINN_constants import *
     from PINN_problem import *
-    run = "TBL_run_00"
+    run = "TBL_run_01"
     all_params = {"domain":{}, "data":{}, "network":{}, "problem":{}}
 
     # Set Domain params
