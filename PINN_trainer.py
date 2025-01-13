@@ -35,83 +35,69 @@ def equ_func2(all_params, g_batch, cotangent, model_fns):
     out, out_t = jax.jvp(u_t, (g_batch,), (cotangent,))
     return out, out_t
 
-def PINN_loss(dynamic_params, all_params, g_batch, particles, particle_vel, model_fns):
+def PINN_loss(dynamic_params, all_params, g_batch, particles, particle_vel, boundaries, model_fns):
     all_params["network"]["layers"] = dynamic_params
     weights = all_params["problem"]["loss_weights"]
-    out, out_t = equ_func2(all_params, g_batch, jnp.tile(jnp.array([[1.0, 0.0, 0.0, 0.0]]),(g_batch.shape[0],1)),model_fns)
-    out_x, out_xx = equ_func(all_params, g_batch, jnp.tile(jnp.array([[0.0, 1.0, 0.0, 0.0]]),(g_batch.shape[0],1)),model_fns)
-    out_y, out_yy = equ_func(all_params, g_batch, jnp.tile(jnp.array([[0.0, 0.0, 1.0, 0.0]]),(g_batch.shape[0],1)),model_fns)
-    out_z, out_zz = equ_func(all_params, g_batch, jnp.tile(jnp.array([[0.0, 0.0, 0.0, 1.0]]),(g_batch.shape[0],1)),model_fns)
+    domain_range = all_params["data"]["domain_range"]
+    u_ref, v_ref, w_ref = all_params["data"]['u_ref'], all_params["data"]['v_ref'], all_params["data"]['w_ref']
+    viscosity = all_params["data"]["viscosity"]
+
+    def scale_output(out, ref, dim):
+        return ref * out[:, dim:dim+1]
+
+    def scale_derivative(out, ref, dim, axis):
+        return ref * out[:, dim:dim+1] / domain_range[axis][1]
+
+    def scale_second_derivative(out, ref, dim, axis):
+        return ref * out[:, dim:dim+1] / domain_range[axis][1]**2
+
+    out, out_t = equ_func2(all_params, g_batch, jnp.array([[1.0, 0.0, 0.0, 0.0]] * g_batch.shape[0]), model_fns)
+    out_x, out_xx = equ_func(all_params, g_batch, jnp.array([[0.0, 1.0, 0.0, 0.0]] * g_batch.shape[0]), model_fns)
+    out_y, out_yy = equ_func(all_params, g_batch, jnp.array([[0.0, 0.0, 1.0, 0.0]] * g_batch.shape[0]), model_fns)
+    out_z, out_zz = equ_func(all_params, g_batch, jnp.array([[0.0, 0.0, 0.0, 1.0]] * g_batch.shape[0]), model_fns)
 
     p_out = model_fns(all_params, particles)
+    b_out = model_fns(all_params, boundaries)
 
-    #out, out_t, out_x, out_xx, out_y, out_yy, out_z, out_zz = eqn_func(g_batch)
-    u = all_params["data"]['u_ref']*out[:,0:1]
-    v = all_params["data"]['v_ref']*out[:,1:2]
-    w = all_params["data"]['w_ref']*out[:,2:3]
+    u, v, w = scale_output(out, u_ref, 0), scale_output(out, v_ref, 1), scale_output(out, w_ref, 2)
+    ut, vt, wt = scale_derivative(out_t, u_ref, 0, 't'), scale_derivative(out_t, v_ref, 1, 't'), scale_derivative(out_t, w_ref, 2, 't')
+    ux, vx, wx, px = scale_derivative(out_x, u_ref, 0, 'x'), scale_derivative(out_x, v_ref, 1, 'x'), scale_derivative(out_x, w_ref, 2, 'x'), scale_derivative(out_x, u_ref, 3, 'x')
+    uy, vy, wy, py = scale_derivative(out_y, u_ref, 0, 'y'), scale_derivative(out_y, v_ref, 1, 'y'), scale_derivative(out_y, w_ref, 2, 'y'), scale_derivative(out_y, u_ref, 3, 'y')
+    uz, vz, wz, pz = scale_derivative(out_z, u_ref, 0, 'z'), scale_derivative(out_z, v_ref, 1, 'z'), scale_derivative(out_z, w_ref, 2, 'z'), scale_derivative(out_z, u_ref, 3, 'z')
+    uxx, vxx, wxx = scale_second_derivative(out_xx, u_ref, 0, 'x'), scale_second_derivative(out_xx, v_ref, 1, 'x'), scale_second_derivative(out_xx, w_ref, 2, 'x')
+    uyy, vyy, wyy = scale_second_derivative(out_yy, u_ref, 0, 'y'), scale_second_derivative(out_yy, v_ref, 1, 'y'), scale_second_derivative(out_yy, w_ref, 2, 'y')
+    uzz, vzz, wzz = scale_second_derivative(out_zz, u_ref, 0, 'z'), scale_second_derivative(out_zz, v_ref, 1, 'z'), scale_second_derivative(out_zz, w_ref, 2, 'z')
 
-    ut = all_params["data"]['u_ref']*out_t[:,0:1]/all_params["data"]["domain_range"]["t"][1]
-    vt = all_params["data"]['v_ref']*out_t[:,1:2]/all_params["data"]["domain_range"]["t"][1]
-    wt = all_params["data"]['w_ref']*out_t[:,2:3]/all_params["data"]["domain_range"]["t"][1]
+    def compute_loss(pred, true):
+        return jnp.mean((pred - true) ** 2)
 
-    ux = all_params["data"]['u_ref']*out_x[:,0:1]/all_params["data"]["domain_range"]["x"][1]
-    vx = all_params["data"]['v_ref']*out_x[:,1:2]/all_params["data"]["domain_range"]["x"][1]
-    wx = all_params["data"]['w_ref']*out_x[:,2:3]/all_params["data"]["domain_range"]["x"][1]
-    px = all_params["data"]['u_ref']*out_x[:,3:4]/all_params["data"]["domain_range"]["x"][1]
+    loss_u = compute_loss(u_ref * p_out[:, 0:1], particle_vel[:, 0:1])
+    loss_v = compute_loss(v_ref * p_out[:, 1:2], particle_vel[:, 1:2])
+    loss_w = compute_loss(w_ref * p_out[:, 2:3], particle_vel[:, 2:3])
+    loss_b_u = compute_loss(u_ref * b_out[:, 0:1], 0)
+    loss_b_v = compute_loss(v_ref * b_out[:, 1:2], 0)
+    loss_b_w = compute_loss(w_ref * b_out[:, 2:3], 0)
+    loss_con = compute_loss(ux + vy + wz, 0)
 
-    uy = all_params["data"]['u_ref']*out_y[:,0:1]/all_params["data"]["domain_range"]["y"][1]
-    vy = all_params["data"]['v_ref']*out_y[:,1:2]/all_params["data"]["domain_range"]["y"][1]
-    wy = all_params["data"]['w_ref']*out_y[:,2:3]/all_params["data"]["domain_range"]["y"][1]
-    py = all_params["data"]['u_ref']*out_y[:,3:4]/all_params["data"]["domain_range"]["y"][1]
+    def compute_NS_loss(t, u, v, w, p, uxx, uyy, uzz):
+        return compute_loss(t + u * ux + v * uy + w * uz + p - viscosity * (uxx + uyy + uzz) - 2.22e-1 / (3 * 0.43685 ** 2) * u, 0)
 
-    uz = all_params["data"]['u_ref']*out_z[:,0:1]/all_params["data"]["domain_range"]["z"][1]
-    vz = all_params["data"]['v_ref']*out_z[:,1:2]/all_params["data"]["domain_range"]["z"][1]
-    wz = all_params["data"]['w_ref']*out_z[:,2:3]/all_params["data"]["domain_range"]["z"][1]
-    pz = all_params["data"]['u_ref']*out_z[:,3:4]/all_params["data"]["domain_range"]["z"][1]
+    loss_NS1 = compute_NS_loss(ut, u, v, w, px, uxx, uyy, uzz)
+    loss_NS2 = compute_NS_loss(vt, u, v, w, py, vxx, vyy, vzz)
+    loss_NS3 = compute_NS_loss(wt, u, v, w, pz, wxx, wyy, wzz)
 
-    uxx = all_params["data"]['u_ref']*out_xx[:,0:1]/all_params["data"]["domain_range"]["x"][1]**2
-    vxx = all_params["data"]['v_ref']*out_xx[:,1:2]/all_params["data"]["domain_range"]["x"][1]**2
-    wxx = all_params["data"]['w_ref']*out_xx[:,2:3]/all_params["data"]["domain_range"]["x"][1]**2
+    total_loss = (weights[0] * loss_u + weights[1] * loss_v + weights[2] * loss_w + weights[3] * loss_con +
+                  weights[4] * loss_NS1 + weights[5] * loss_NS2 + weights[6] * loss_NS3 +
+                  weights[7] * (loss_b_u + loss_b_v + loss_b_w))
 
-    uyy = all_params["data"]['u_ref']*out_yy[:,0:1]/all_params["data"]["domain_range"]["y"][1]**2
-    vyy = all_params["data"]['v_ref']*out_yy[:,1:2]/all_params["data"]["domain_range"]["y"][1]**2
-    wyy = all_params["data"]['w_ref']*out_yy[:,2:3]/all_params["data"]["domain_range"]["y"][1]**2
-
-    uzz = all_params["data"]['u_ref']*out_zz[:,0:1]/all_params["data"]["domain_range"]["z"][1]**2
-    vzz = all_params["data"]['v_ref']*out_zz[:,1:2]/all_params["data"]["domain_range"]["z"][1]**2
-    wzz = all_params["data"]['w_ref']*out_zz[:,2:3]/all_params["data"]["domain_range"]["z"][1]**2
-       
-
-    loss_u = all_params["data"]['u_ref']*p_out[:,0:1] - particle_vel[:,0:1]
-    loss_u = jnp.mean(loss_u**2)
-
-    loss_v = all_params["data"]['v_ref']*p_out[:,1:2] - particle_vel[:,1:2]
-    loss_v = jnp.mean(loss_v**2)
-
-    loss_w = all_params["data"]['w_ref']*p_out[:,2:3] - particle_vel[:,2:3]
-    loss_w = jnp.mean(loss_w**2)
-    
-    
-    loss_con = ux + vy + wz
-    loss_con = jnp.mean(loss_con**2)
-    loss_NS1 = ut + u*ux + v*uy + w*uz + px -\
-               all_params["data"]["viscosity"]*(uxx+uyy+uzz)-2.22*10**(-1)/(3*0.43685**2)*u
-    loss_NS1 = jnp.mean(loss_NS1**2)
-    loss_NS2 = vt + u*vx + v*vy + w*vz + py -\
-               all_params["data"]["viscosity"]*(vxx+vyy+vzz)-2.22*10**(-1)/(3*0.43685**2)*v
-    loss_NS2 = jnp.mean(loss_NS2**2)
-    loss_NS3 = wt + u*wx + v*wy + w*wz + pz - all_params["data"]["viscosity"]*(wxx+wyy+wzz)-2.22*10**(-1)/(3*0.43685**2)*w
-
-    loss_NS3 = jnp.mean(loss_NS3**2)
-    total_loss = weights[0]*loss_u + weights[1]*loss_v + weights[2]*loss_w + weights[3]*loss_con + weights[4]*loss_NS1 + weights[5]*loss_NS2 + weights[6]*loss_NS3
     return total_loss
 
-@partial(jax.jit, static_argnums=(1, 4, 8))
-def PINN_update(model_states, optimiser_fn, dynamic_params, static_params, static_keys, grids, particles, particle_vel, model_fn):
+@partial(jax.jit, static_argnums=(1, 4, 9))
+def PINN_update(model_states, optimiser_fn, dynamic_params, static_params, static_keys, grids, particles, particle_vel, boundaries, model_fn):
     static_leaves, treedef = static_keys
     leaves = [d if s is None else s for d, s in zip(static_params, static_leaves)]
     all_params = jax.tree_util.tree_unflatten(treedef, leaves)
-    lossval, grads = value_and_grad(PINN_loss, argnums=0)(dynamic_params, all_params, grids, particles, particle_vel, model_fn)
+    lossval, grads = value_and_grad(PINN_loss, argnums=0)(dynamic_params, all_params, grids, particles, particle_vel, boundaries, model_fn)
     updates, model_states = optimiser_fn(grads, model_states, dynamic_params)
     dynamic_params = optax.apply_updates(dynamic_params, updates)
     return lossval, model_states, dynamic_params
@@ -139,20 +125,22 @@ class PINN(PINNbase):
         model_fn = c.network.network_fn
         dynamic_params = all_params["network"].pop("layers")
         key, batch_key = random.split(key)
-        g_batch_key1, g_batch_key2, g_batch_key3, g_batch_key4, p_batch_key, e_batch_key = random.split(batch_key, num = 6)
+        g_batch_key1, g_batch_key2, g_batch_key3, g_batch_key4, p_batch_key, b_batch_key, e_batch_key = random.split(batch_key, num = 7)
         g_batch_keys1 = random.split(g_batch_key1, num = self.c.optimization_init_kwargs["n_steps"])
         g_batch_keys2 = random.split(g_batch_key2, num = self.c.optimization_init_kwargs["n_steps"])
         g_batch_keys3 = random.split(g_batch_key3, num = self.c.optimization_init_kwargs["n_steps"])
         g_batch_keys4 = random.split(g_batch_key4, num = self.c.optimization_init_kwargs["n_steps"])
 
         p_batch_keys = random.split(p_batch_key, num = self.c.optimization_init_kwargs["n_steps"])
+        b_batch_keys = random.split(b_batch_key, num = self.c.optimization_init_kwargs["n_steps"])
         e_batch_keys = random.split(e_batch_key, num = self.c.optimization_init_kwargs["n_steps"]//2000)
+
         p_batch_keys = iter(p_batch_keys)
         g_batch_keys1 = iter(g_batch_keys1)
         g_batch_keys2 = iter(g_batch_keys2)
         g_batch_keys3 = iter(g_batch_keys3)
         g_batch_keys4 = iter(g_batch_keys4)
-
+        b_batch_keys = iter(b_batch_keys)
         e_batch_keys = iter(e_batch_keys)
         leaves, treedef = jax.tree_util.tree_flatten(all_params)
         ab = tuple(x if isinstance(x,(np.ndarray, jnp.ndarray)) else None for x in leaves)
@@ -164,6 +152,7 @@ class PINN(PINNbase):
         g_key2 = next(g_batch_keys2)
         g_key3 = next(g_batch_keys3)
         g_key4 = next(g_batch_keys4)
+        b_key = next(b_batch_keys)
         p_batch = random.choice(p_key,train_data['pos'],shape=(self.c.optimization_init_kwargs["p_batch"],))
         v_batch = random.choice(p_key,train_data['vel'],shape=(self.c.optimization_init_kwargs["p_batch"],))
 
@@ -171,7 +160,11 @@ class PINN(PINNbase):
                             random.choice(g_key2,grids['eqns']['x'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
                             random.choice(g_key3,grids['eqns']['y'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
                             random.choice(g_key4,grids['eqns']['z'],shape=(self.c.optimization_init_kwargs["e_batch"],))],axis=1)
-        update = PINN_update.lower(model_states, optimiser_fn, dynamic_params, ab, ad, g_batch, p_batch, v_batch, model_fn).compile()
+        b_batch = jnp.stack([random.choice(b_key,grids['bczl']['t'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
+                             random.choice(b_key,grids['bczl']['x'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
+                             random.choice(b_key,grids['bczl']['y'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
+                             random.choice(b_key,grids['bczl']['z'],shape=(self.c.optimization_init_kwargs["e_batch"],))],axis=1)
+        update = PINN_update.lower(model_states, optimiser_fn, dynamic_params, ab, ad, g_batch, p_batch, v_batch, b_batch, model_fn).compile()
         
         for i in tqdm(range(self.c.optimization_init_kwargs["n_steps"])):
             template = ("iteration {}, loss_val {}")
@@ -265,7 +258,7 @@ if __name__=="__main__":
 
     # Set problem params
     viscosity = 15e-6
-    loss_weights = (1.0, 1.0, 1.0, 0.000001, 0.000001, 0.000001, 0.000001)
+    loss_weights = (1.0, 1.0, 1.0, 0.000001, 0.000001, 0.000001, 0.000001, 1.0)
     path_s = '/scratch/ws/5/hyun_sh-conda_env/Ground/'
     problem_name = 'TBL'
     # Set optimization params
