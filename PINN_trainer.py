@@ -287,4 +287,3 @@ if __name__=="__main__":
     run.train()
     #all_params, model_fn, train_data, valid_data = run.test()
 
-# %%
