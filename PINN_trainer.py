@@ -163,7 +163,7 @@ class PINN(PINNbase):
         b_batch = jnp.stack([random.choice(b_key,grids['bczl']['t'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
                              random.choice(b_key,grids['bczl']['x'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
                              random.choice(b_key,grids['bczl']['y'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
-                             random.choice(b_key,grids['bczl']['z'],shape=(self.c.optimization_init_kwargs["e_batch"],))],axis=1)
+                             random.choice(b_key,np.array([0]),shape=(self.c.optimization_init_kwargs["e_batch"],))],axis=1)
         update = PINN_update.lower(model_states, optimiser_fn, dynamic_params, ab, ad, g_batch, p_batch, v_batch, b_batch, model_fn).compile()
         
         for i in tqdm(range(self.c.optimization_init_kwargs["n_steps"])):
@@ -180,7 +180,7 @@ class PINN(PINNbase):
                                 random.choice(g_key2,grids['eqns']['x'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
                                 random.choice(g_key3,grids['eqns']['y'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
                                 random.choice(g_key4,grids['eqns']['z'],shape=(self.c.optimization_init_kwargs["e_batch"],))],axis=1)            
-            lossval, model_states, dynamic_params = update(model_states, dynamic_params, ab, g_batch, p_batch, v_batch)
+            lossval, model_states, dynamic_params = update(model_states, dynamic_params, ab, g_batch, p_batch, v_batch, b_batch)
         
         
             self.report(i, model_states, dynamic_params, all_params, p_batch, v_batch, valid_data, e_batch_keys, model_fn)
@@ -245,7 +245,7 @@ if __name__=="__main__":
     bound_keys = ['ic', 'bcxu', 'bcxl', 'bcyu', 'bcyl', 'bczu', 'bczl']
 
     # Set Data params
-    path = '/scratch/ws/5/hyun_sh-conda_env/TBL/'
+    path = '/scratch/hyun/TBL/'
     timeskip = 1
     track_limit = 424070
     viscosity = 15*10**(-6)
@@ -259,7 +259,7 @@ if __name__=="__main__":
     # Set problem params
     viscosity = 15e-6
     loss_weights = (1.0, 1.0, 1.0, 0.000001, 0.000001, 0.000001, 0.000001, 1.0)
-    path_s = '/scratch/ws/5/hyun_sh-conda_env/Ground/'
+    path_s = '/scratch/hyun/Ground/'
     problem_name = 'TBL'
     # Set optimization params
     n_steps = 100000000
