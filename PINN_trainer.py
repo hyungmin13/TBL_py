@@ -197,13 +197,17 @@ class PINN(PINNbase):
             g_key2 = next(g_batch_keys2)
             g_key3 = next(g_batch_keys3)
             g_key4 = next(g_batch_keys4)
-
+            b_key = next(b_batch_keys)
             p_batch = random.choice(p_key,train_data['pos'],shape=(self.c.optimization_init_kwargs["p_batch"],))
             v_batch = random.choice(p_key,train_data['vel'],shape=(self.c.optimization_init_kwargs["p_batch"],))
             g_batch = jnp.stack([random.choice(g_key1,grids['eqns']['t'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
                                 random.choice(g_key2,grids['eqns']['x'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
                                 random.choice(g_key3,grids['eqns']['y'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
                                 random.choice(g_key4,grids['eqns']['z'],shape=(self.c.optimization_init_kwargs["e_batch"],))],axis=1)            
+            b_batch = jnp.stack([random.choice(b_key,grids['bczl']['t'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
+                                random.choice(b_key,grids['bczl']['x'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
+                                random.choice(b_key,grids['bczl']['y'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
+                                random.choice(b_key,np.array([0]),shape=(self.c.optimization_init_kwargs["e_batch"],))],axis=1)
             lossval, model_states, dynamic_params = update(model_states, dynamic_params, ab, g_batch, p_batch, v_batch, b_batch)
         
         
