@@ -90,7 +90,7 @@ if __name__ == "__main__":
     for i in range(bins.shape[0]-1):
         index = np.where((pos_from_center<bins[i+1])&(pos_from_center>=bins[i]))
         indexes.append(index[0])
-
+#%%
     vel_sub_t_list = []
     pos_sub_t_list = []
     
@@ -99,13 +99,23 @@ if __name__ == "__main__":
         vel_sub_list = []
         pos_sub_list = []
         pos_sub_unnorm_list = []
+        print(j)
         for i in range(len(indexes)):
+            #valid_data['vel'][:,3:4] = valid_data['vel'][:,3:4]*1.185
             vel_sub_list.append(valid_data['vel'][213*141*61*j:213*141*61*(j+1),:][indexes[i],:])
             pos_sub_unnorm_list.append(pos_unnorm[213*141*61*j:213*141*61*(j+1),:][indexes[i],:])
             pos_sub_list.append(valid_data['pos'][213*141*61*j:213*141*61*(j+1),:][indexes[i],:])
         vel_sub_t_list.append(vel_sub_list)
         pos_sub_t_list.append(pos_sub_list)
         pos_sub_t_unnorm_list.append(pos_sub_unnorm_list)
+
+ext_p_list = []
+for i in range(len(vel_sub_t_list)):
+    ext_p_array = np.mean(np.concatenate(vel_sub_t_list[i],0)[:,3])
+    ext_p_list.append(ext_p_array)
+for i in range(len(vel_sub_t_list)):
+    for j in range(len(vel_sub_t_list[i])):
+        vel_sub_t_list[i][j][:,3] = vel_sub_t_list[i][j][:,3] - ext_p_list[i]
 
     pred_list_total = []
     keys = ['u_ref', 'v_ref', 'w_ref', 'u_ref']
@@ -126,11 +136,7 @@ if __name__ == "__main__":
     for i in range(len(pred_list_total)):
         for j in range(len(pred_list_total[i])):
             pred_list_total[i][j][:,-1] = pred_list_total[i][j][:,-1] - test_p_list[i]
-    
-    with open("datas/pred_list_"+checkpoint_fol+".pkl","wb") as f:
-        pickle.dump(pred_list_total,f)
-    f.close()
-#%%
+
     vel_error_t_list = []
     pre_error_t_list = []
     dist = getattr(st,"norm")
@@ -143,23 +149,33 @@ if __name__ == "__main__":
             pre_error_list.append(np.sqrt((np.sqrt(pred_list_total[i][j][:,3]**2)-np.sqrt(vel_sub_t_list[i][j][:,3]**2))**2))
         vel_error_t_list.append(vel_error_list)
         pre_error_t_list.append(pre_error_list)
-
+#%%
     import scipy.stats as st
     dist = getattr(st,"norm")
-    mean_error_vel = []
+    mean_error_list = []
     for i in range(len(vel_error_t_list[10])):
         mean_std = dist.fit(vel_error_t_list[10][i])
-        mean_error_vel.append(mean_std[0])
-    mean_error_vel = np.array(mean_error_vel)
-
+        mean_error_list.append(mean_std[0])
+    mean_error_list = np.array(mean_error_list)
+#%%
     import scipy.stats as st
     dist = getattr(st,"norm")
-    mean_error_pre = []
+    mean_error_list = []
     for i in range(len(pre_error_t_list[10])):
         mean_std = dist.fit(pre_error_t_list[10][i])
-        mean_error_pre.append(mean_std[0])
-    mean_error_pre = np.array(mean_error_pre)
-
+        mean_error_list.append(mean_std[0])
+    mean_error_list = np.array(mean_error_list)
+#%%
+    test_vels = np.concatenate(pred_list_total[25])
+    test_vels_ext = np.concatenate(vel_sub_t_list[25])
+#%%
+    f = np.concatenate([(test_vels[:,0]-test_vels_ext[:,0]).reshape(-1,1),
+                        (test_vels[:,1]-test_vels_ext[:,1]).reshape(-1,1),
+                        (test_vels[:,2]-test_vels_ext[:,2]).reshape(-1,1)],1)
+    div = np.concatenate([test_vels_ext[:,0].reshape(-1,1), test_vels_ext[:,1].reshape(-1,1),
+                          test_vels_ext[:,2].reshape(-1,1)],1)
+    print(np.linalg.norm(f, ord='fro')/np.linalg.norm(div,ord='fro'))
+    print(np.linalg.norm(test_vels[:,3]-test_vels_ext[:,3])/np.linalg.norm(test_vels_ext[:,3]))
 #%%
 """
 from scipy.integrate import tplquad
@@ -189,14 +205,5 @@ f.close()
 """
 
 #%%
-    test_vels = np.concatenate(pred_list_total[25])
-    test_vels_ext = np.concatenate(vel_sub_t_list[25])
-#%%
-    f = np.concatenate([(test_vels[:,0]-test_vels_ext[:,0]).reshape(-1,1),
-                        (test_vels[:,1]-test_vels_ext[:,1]).reshape(-1,1),
-                        (test_vels[:,2]-test_vels_ext[:,2]).reshape(-1,1)],1)
-    div = np.concatenate([test_vels_ext[:,0].reshape(-1,1), test_vels_ext[:,1].reshape(-1,1),
-                          test_vels_ext[:,2].reshape(-1,1)],1)
-    print(np.linalg.norm(f, ord='fro')/np.linalg.norm(div,ord='fro'))
-    print(np.linalg.norm(test_vels[:,3]-test_vels_ext[:,3])/np.linalg.norm(test_vels_ext[:,3]))
+
 
