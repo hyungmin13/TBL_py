@@ -109,13 +109,13 @@ if __name__ == "__main__":
         pos_sub_t_list.append(pos_sub_list)
         pos_sub_t_unnorm_list.append(pos_sub_unnorm_list)
 
-ext_p_list = []
-for i in range(len(vel_sub_t_list)):
-    ext_p_array = np.mean(np.concatenate(vel_sub_t_list[i],0)[:,3])
-    ext_p_list.append(ext_p_array)
-for i in range(len(vel_sub_t_list)):
-    for j in range(len(vel_sub_t_list[i])):
-        vel_sub_t_list[i][j][:,3] = vel_sub_t_list[i][j][:,3] - ext_p_list[i]
+    ext_p_list = []
+    for i in range(len(vel_sub_t_list)):
+        ext_p_array = np.mean(np.concatenate(vel_sub_t_list[i],0)[:,3])
+        ext_p_list.append(ext_p_array)
+    for i in range(len(vel_sub_t_list)):
+        for j in range(len(vel_sub_t_list[i])):
+            vel_sub_t_list[i][j][:,3] = vel_sub_t_list[i][j][:,3] - ext_p_list[i]
 
     pred_list_total = []
     keys = ['u_ref', 'v_ref', 'w_ref', 'u_ref']
