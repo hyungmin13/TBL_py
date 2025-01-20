@@ -75,99 +75,152 @@ if __name__ == "__main__":
 
     model = Model(all_params["network"]["layers"], model_fn)
     all_params["network"]["layers"] = from_state_dict(model, a).params
-#%% pred_list_total 는 모든 시간 [i] 에 대해 중심으로 부터의 거리 [j] 에 따른 속도, 압력의 예측값
+#%% valid_pred_list_total 는 모든 시간 [i] 에 대해 중심으로 부터의 거리 [j] 에 따른 속도, 압력의 예측값
     output_shape = (213,141,61)
     total_spatial_error = []
-    pos_unnorm = np.concatenate([valid_data['pos'][:,i:i+1]*all_params["domain"]["in_max"][0,i] 
+    train_pos_unnorm = np.concatenate([train_data['pos'][:,i:i+1]*all_params["domain"]["in_max"][0,i]
+                                 for i in range(4)],1).reshape(-1,4)
+    valid_pos_unnorm = np.concatenate([valid_data['pos'][:,i:i+1]*all_params["domain"]["in_max"][0,i] 
                                  for i in range(4)],1).reshape((-1,)+output_shape+(4,))
-
-    pos_from_center = pos_unnorm[1,:,:,:,:].reshape(-1,4) - np.array([0,0.028,0.006,0.00212]).reshape(-1,4)
-    pos_from_center = np.sqrt(pos_from_center[:,1]**2+pos_from_center[:,2]**2+pos_from_center[:,3]**2)
-    pos_unnorm = pos_unnorm.reshape(-1,4)
-    counts, bins, bars = plt.hist(pos_from_center, bins=50)
-
-    indexes = []
-    for i in range(bins.shape[0]-1):
-        index = np.where((pos_from_center<bins[i+1])&(pos_from_center>=bins[i]))
-        indexes.append(index[0])
-#%%
-    vel_sub_t_list = []
-    pos_sub_t_list = []
     
-    pos_sub_t_unnorm_list = []
+    train_pos_from_center = train_pos_unnorm - np.array([0,0.028,0.006,0.00212]).reshape(-1,4)
+    train_pos_from_center = np.sqrt(train_pos_from_center[:,1]**2+train_pos_from_center[:,2]**2+train_pos_from_center[:,3]**2)
+    train_pos_unnorm = train_pos_unnorm.reshape(-1,4)
+
+    valid_pos_from_center = valid_pos_unnorm[1,:,:,:,:].reshape(-1,4) - np.array([0,0.028,0.006,0.00212]).reshape(-1,4)
+    valid_pos_from_center = np.sqrt(valid_pos_from_center[:,1]**2+valid_pos_from_center[:,2]**2+valid_pos_from_center[:,3]**2)
+    valid_pos_unnorm = valid_pos_unnorm.reshape(-1,4)
+
+    counts, bins, bars = plt.hist(train_pos_from_center, bins=50)
+
+    train_indexes = []
+    for i in range(bins.shape[0]-1):
+        index = np.where((train_pos_from_center<bins[i+1])&(train_pos_from_center>=bins[i]))
+        train_indexes.append(index[0])
+
+    valid_indexes = []
+    for i in range(bins.shape[0]-1):
+        index = np.where((valid_pos_from_center<bins[i+1])&(valid_pos_from_center>=bins[i]))
+        valid_indexes.append(index[0])
+
+#%%
+    train_vel_sub_list = []
+    train_pos_sub_list = []
+    train_pos_sub_unnorm_list = []
+    for i in range(len(train_indexes)):
+        train_vel_sub_list.append(train_data['vel'][train_indexes[i],:])
+        train_pos_sub_unnorm_list.append(train_pos_unnorm[train_indexes[i],:])
+        train_pos_sub_list.append(train_data['pos'][train_indexes[i],:])
+
+#%%
+    train_pred_list_total = []
+    keys = ['u_ref', 'v_ref', 'w_ref', 'u_ref']
+    for i in range(len(train_pos_sub_list)):
+        pred_list = []
+        print(i)
+        for j in range(train_pos_sub_list[i].shape[0]//10000+1):
+            pred = model_fn(all_params, train_pos_sub_list[i][10000*j:10000*(j+1),:])
+            pred_list.append(pred)
+        pred_list = np.concatenate(pred_list,0)
+        pred_unnorm = np.concatenate([pred_list[:,k:(k+1)]*all_params["data"][keys[k]] for k in range(len(keys))],1)
+        pred_unnorm[:,-1] = 1.185*pred_unnorm[:,-1]
+        train_pred_list_total.append(pred_unnorm)
+#%%
+    train_vel_error_list = []
+    for i in range(len(train_pred_list_total)):
+        vel_error_list = []
+        print(i)
+        vel_error_list.append(np.sqrt((np.sqrt(train_pred_list_total[i][:,0]**2+train_pred_list_total[i][:,1]**2+train_pred_list_total[i][:,2]**2)-
+                                       np.sqrt(train_vel_sub_list[i][:,0]**2+train_vel_sub_list[i][:,1]**2+train_vel_sub_list[i][:,2]**2))**2)/
+                                       np.sqrt(train_vel_sub_list[i][:,0]**2+train_vel_sub_list[i][:,1]**2+train_vel_sub_list[i][:,2]**2))
+        train_vel_error_list.append(vel_error_list)
+
+#%%
+    
+    dist = getattr(st,"norm")
+    train_vel_mean_error_list = []
+    for i in range(len(train_vel_error_list)):
+        mean_std = dist.fit(train_vel_error_list[i])
+        train_vel_mean_error_list.append(mean_std[0])
+    train_vel_mean_error_list = np.array(train_vel_mean_error_list)
+
+#%%
+    valid_vel_sub_t_list = []
+    valid_pos_sub_t_list = []
+    valid_pos_sub_t_unnorm_list = []
     for j in range(50):
         vel_sub_list = []
         pos_sub_list = []
         pos_sub_unnorm_list = []
         print(j)
-        for i in range(len(indexes)):
+        for i in range(len(valid_indexes)):
             #valid_data['vel'][:,3:4] = valid_data['vel'][:,3:4]*1.185
-            vel_sub_list.append(valid_data['vel'][213*141*61*j:213*141*61*(j+1),:][indexes[i],:])
-            pos_sub_unnorm_list.append(pos_unnorm[213*141*61*j:213*141*61*(j+1),:][indexes[i],:])
-            pos_sub_list.append(valid_data['pos'][213*141*61*j:213*141*61*(j+1),:][indexes[i],:])
-        vel_sub_t_list.append(vel_sub_list)
-        pos_sub_t_list.append(pos_sub_list)
-        pos_sub_t_unnorm_list.append(pos_sub_unnorm_list)
+            vel_sub_list.append(valid_data['vel'][213*141*61*j:213*141*61*(j+1),:][valid_indexes[i],:])
+            pos_sub_unnorm_list.append(valid_pos_unnorm[213*141*61*j:213*141*61*(j+1),:][valid_indexes[i],:])
+            pos_sub_list.append(valid_data['pos'][213*141*61*j:213*141*61*(j+1),:][valid_indexes[i],:])
+        valid_vel_sub_t_list.append(vel_sub_list)
+        valid_pos_sub_t_list.append(pos_sub_list)
+        valid_pos_sub_t_unnorm_list.append(pos_sub_unnorm_list)
 
-    ext_p_list = []
-    for i in range(len(vel_sub_t_list)):
-        ext_p_array = np.mean(np.concatenate(vel_sub_t_list[i],0)[:,3])
-        ext_p_list.append(ext_p_array)
-    for i in range(len(vel_sub_t_list)):
-        for j in range(len(vel_sub_t_list[i])):
-            vel_sub_t_list[i][j][:,3] = vel_sub_t_list[i][j][:,3] - ext_p_list[i]
+    valid_ext_p_list = []
+    for i in range(len(valid_vel_sub_t_list)):
+        ext_p_array = np.mean(np.concatenate(valid_vel_sub_t_list[i],0)[:,3])
+        valid_ext_p_list.append(ext_p_array)
+    for i in range(len(valid_vel_sub_t_list)):
+        for j in range(len(valid_vel_sub_t_list[i])):
+            valid_vel_sub_t_list[i][j][:,3] = valid_vel_sub_t_list[i][j][:,3] - valid_ext_p_list[i]
 
-    pred_list_total = []
+    valid_pred_list_total = []
     keys = ['u_ref', 'v_ref', 'w_ref', 'u_ref']
-    for i in range(len(pos_sub_t_list)):
+    for i in range(len(valid_pos_sub_t_list)):
         pred_list = []
         print(i)
-        for j in range(len(indexes)):
-            pos_unnorm = np.concatenate(pos_sub_t_list[i][j])
-            pred = model_fn(all_params, pos_sub_t_list[i][j])
+        for j in range(len(valid_indexes)):
+            valid_pos_unnorm = np.concatenate(valid_pos_sub_t_list[i][j])
+            pred = model_fn(all_params, valid_pos_sub_t_list[i][j])
             pred_unnorm = np.concatenate([pred[:,k:(k+1)]*all_params["data"][keys[k]] for k in range(len(keys))],1)
             pred_unnorm[:,-1] = 1.185*pred_unnorm[:,-1]
             pred_list.append(pred_unnorm)
-        pred_list_total.append(pred_list)
-    test_p_list = []
-    for i in range(len(pred_list_total)):
-        test_p_array = np.mean(np.concatenate(pred_list_total[i],0)[:,-1])
-        test_p_list.append(test_p_array)
-    for i in range(len(pred_list_total)):
-        for j in range(len(pred_list_total[i])):
-            pred_list_total[i][j][:,-1] = pred_list_total[i][j][:,-1] - test_p_list[i]
+        valid_pred_list_total.append(pred_list)
+    valid_test_p_list = []
+    for i in range(len(valid_pred_list_total)):
+        test_p_array = np.mean(np.concatenate(valid_pred_list_total[i],0)[:,-1])
+        valid_test_p_list.append(test_p_array)
+    for i in range(len(valid_pred_list_total)):
+        for j in range(len(valid_pred_list_total[i])):
+            valid_pred_list_total[i][j][:,-1] = valid_pred_list_total[i][j][:,-1] - valid_test_p_list[i]
 
-    vel_error_t_list = []
-    pre_error_t_list = []
-    dist = getattr(st,"norm")
-    for i in range(len(pred_list_total)):
+    valid_vel_error_t_list = []
+    valid_pre_error_t_list = []
+    for i in range(len(valid_pred_list_total)):
         vel_error_list = []
         pre_error_list = []
         print(i)
-        for j in range(len(pred_list_total[i])):
-            vel_error_list.append(np.sqrt((np.sqrt(pred_list_total[i][j][:,0]**2+pred_list_total[i][j][:,1]**2+pred_list_total[i][j][:,2]**2)-np.sqrt(vel_sub_t_list[i][j][:,0]**2+vel_sub_t_list[i][j][:,1]**2+vel_sub_t_list[i][j][:,2]**2))**2)/np.sqrt(vel_sub_t_list[i][j][:,0]**2+vel_sub_t_list[i][j][:,1]**2+vel_sub_t_list[i][j][:,2]**2))
-            pre_error_list.append(np.sqrt((np.sqrt(pred_list_total[i][j][:,3]**2)-np.sqrt(vel_sub_t_list[i][j][:,3]**2))**2))
-        vel_error_t_list.append(vel_error_list)
-        pre_error_t_list.append(pre_error_list)
+        for j in range(len(valid_pred_list_total[i])):
+            vel_error_list.append(np.sqrt((np.sqrt(valid_pred_list_total[i][j][:,0]**2+valid_pred_list_total[i][j][:,1]**2+valid_pred_list_total[i][j][:,2]**2)-np.sqrt(valid_vel_sub_t_list[i][j][:,0]**2+valid_vel_sub_t_list[i][j][:,1]**2+valid_vel_sub_t_list[i][j][:,2]**2))**2)/np.sqrt(valid_vel_sub_t_list[i][j][:,0]**2+valid_vel_sub_t_list[i][j][:,1]**2+valid_vel_sub_t_list[i][j][:,2]**2))
+            pre_error_list.append(np.sqrt((np.sqrt(valid_pred_list_total[i][j][:,3]**2)-np.sqrt(valid_vel_sub_t_list[i][j][:,3]**2))**2))
+        valid_vel_error_t_list.append(vel_error_list)
+        valid_pre_error_t_list.append(pre_error_list)
 #%%
-    import scipy.stats as st
     dist = getattr(st,"norm")
-    mean_error_list = []
-    for i in range(len(vel_error_t_list[10])):
-        mean_std = dist.fit(vel_error_t_list[10][i])
-        mean_error_list.append(mean_std[0])
-    mean_error_list = np.array(mean_error_list)
+    valid_vel_mean_error_list = []
+    for i in range(len(valid_vel_error_t_list[10])):
+        mean_std = dist.fit(valid_vel_error_t_list[10][i])
+        valid_vel_mean_error_list.append(mean_std[0])
+    valid_vel_mean_error_list = np.array(valid_vel_mean_error_list)
 #%%
-    import scipy.stats as st
     dist = getattr(st,"norm")
-    mean_error_list = []
-    for i in range(len(pre_error_t_list[10])):
-        mean_std = dist.fit(pre_error_t_list[10][i])
-        mean_error_list.append(mean_std[0])
-    mean_error_list = np.array(mean_error_list)
+    valid_pre_mean_error_list = []
+    for i in range(len(valid_pre_error_t_list[10])):
+        mean_std = dist.fit(valid_pre_error_t_list[10][i])
+        valid_pre_mean_error_list.append(mean_std[0])
+    valid_pre_mean_error_list = np.array(valid_pre_mean_error_list)
 #%%
-    test_vels = np.concatenate(pred_list_total[25])
-    test_vels_ext = np.concatenate(vel_sub_t_list[25])
+    valid_mean_error = np.concatenate([valid_vel_mean_error_list.reshape(-1,1),
+                                        valid_pre_mean_error_list.reshape(-1,1)],1)
+#%%
+    test_vels = np.concatenate(valid_pred_list_total[25])
+    test_vels_ext = np.concatenate(valid_vel_sub_t_list[25])
 #%%
     f = np.concatenate([(test_vels[:,0]-test_vels_ext[:,0]).reshape(-1,1),
                         (test_vels[:,1]-test_vels_ext[:,1]).reshape(-1,1),
@@ -176,6 +229,13 @@ if __name__ == "__main__":
                           test_vels_ext[:,2].reshape(-1,1)],1)
     print(np.linalg.norm(f, ord='fro')/np.linalg.norm(div,ord='fro'))
     print(np.linalg.norm(test_vels[:,3]-test_vels_ext[:,3])/np.linalg.norm(test_vels_ext[:,3]))
+#%%
+with open("datas/train_error_from_center"+checkpoint_fol+".pkl","wb") as f:
+    pickle.dump(train_vel_mean_error_list,f)
+f.close()
+with open("datas/valid_error_from_center"+checkpoint_fol+".pkl","wb") as f:
+    pickle.dump(valid_mean_error,f)
+f.close()
 #%%
 """
 from scipy.integrate import tplquad
