@@ -65,23 +65,24 @@ def Derivatives(dynamic_params, all_params, g_batch, model_fns):
     keys = ['u_ref', 'v_ref', 'w_ref', 'u_ref']
 
     all_params["network"]["layers"] = dynamic_params
-    out, out_x = equ_func(all_params, g_batch, jnp.tile(jnp.array([[0.0, 1.0, 0.0, 0.0]]),(g_batch.shape[0],1)),model_fns)
-    out, out_y = equ_func(all_params, g_batch, jnp.tile(jnp.array([[0.0, 0.0, 1.0, 0.0]]),(g_batch.shape[0],1)),model_fns)
-    out, out_z = equ_func(all_params, g_batch, jnp.tile(jnp.array([[0.0, 0.0, 0.0, 1.0]]),(g_batch.shape[0],1)),model_fns)    
+    out, out_x = equ_func2(all_params, g_batch, jnp.tile(jnp.array([[0.0, 1.0, 0.0, 0.0]]),(g_batch.shape[0],1)),model_fns)
+    out, out_y = equ_func2(all_params, g_batch, jnp.tile(jnp.array([[0.0, 0.0, 1.0, 0.0]]),(g_batch.shape[0],1)),model_fns)
+    out, out_z = equ_func2(all_params, g_batch, jnp.tile(jnp.array([[0.0, 0.0, 0.0, 1.0]]),(g_batch.shape[0],1)),model_fns)    
     uvwp = np.concatenate([out[:,k:(k+1)]*all_params["data"][keys[k]] for k in range(len(keys))],1)
     uvwp[:,-1] = 1.185*uvwp[:,-1]
     uxs = np.concatenate([out_x[:,k:(k+1)]*all_params["data"][keys[k]]/all_params["domain"]["in_max"][0,1] for k in range(len(keys))],1)
     uys = np.concatenate([out_y[:,k:(k+1)]*all_params["data"][keys[k]]/all_params["domain"]["in_max"][0,2] for k in range(len(keys))],1)
     uzs = np.concatenate([out_z[:,k:(k+1)]*all_params["data"][keys[k]]/all_params["domain"]["in_max"][0,3] for k in range(len(keys))],1)
-    deriv_mat = np.concatenate([np.expand_dims(uxs,1),np.expand_dims(uys,1),np.expand_dims(uzs,1),2])
+    deriv_mat = np.concatenate([np.expand_dims(uxs,2),np.expand_dims(uys,2),np.expand_dims(uzs,2)],2)
     vor_mag = np.sqrt((deriv_mat[:,1,2]-deriv_mat[:,2,1])**2+
                       (deriv_mat[:,2,0]-deriv_mat[:,0,2])**2+
                       (deriv_mat[:,0,1]-deriv_mat[:,1,0])**2)
-    Q = 0.5 * sum(np.abs(0.5 * (deriv_mat[:, i, j] + deriv_mat[:, j, i]))**2 - 
-                  np.abs(0.5 * (deriv_mat[:, i, i] - deriv_mat[:, j, j]))**2 
-                  for i in range(3) for j in range(3) if i != j)
+    Q = 0.5 * sum(-np.abs(0.5 * (deriv_mat[:, i, j] + deriv_mat[:, j, i]))**2 +
+                  np.abs(0.5 * (deriv_mat[:, i, j] - deriv_mat[:, j, i]))**2 
+                  for i in range(3) for j in range(3))
     return uvwp, vor_mag, Q
-
+#%%
+print(all_params["domain"]["in_max"])
 #%%
 if __name__ == "__main__":
     from PINN_domain import *
@@ -89,10 +90,10 @@ if __name__ == "__main__":
     from PINN_network import *
     from PINN_constants import *
     from PINN_problem import *
-    parser = argparse.ArgumentParser(description='TBL_PINN')
-    parser.add_argument('-t', '--timestep', type=int, help='timestep', default=25)
-    args = parser.parse_args()
-    timestep = args.timestep
+    #parser = argparse.ArgumentParser(description='TBL_PINN')
+    #parser.add_argument('-t', '--timestep', type=int, help='timestep', default=25)
+    #args = parser.parse_args()
+    #timestep = args.timestep
     u_tau = 15*10**(-6)/36.2/10**(-6)
     u_ref_n = 4.9968*10**(-2)/u_tau
     delta = 36.2*10**(-6)
@@ -125,7 +126,7 @@ if __name__ == "__main__":
     all_params["network"]["layers"] = from_state_dict(model, a).params
 
 #%%
-
+    timestep = 25
     pos_ref = all_params["domain"]["in_max"].flatten()
     vel_ref = np.array([all_params["data"]["u_ref"],
                         all_params["data"]["v_ref"],
@@ -174,17 +175,20 @@ if __name__ == "__main__":
     v_error = np.sqrt(np.square(uvwp[:,1].reshape(31,88,410) - vel_ground[1]))
     w_error = np.sqrt(np.square(uvwp[:,2].reshape(31,88,410) - vel_ground[2]))
     p_error = np.sqrt(np.square(uvwp[:,3].reshape(31,88,410) - fluc_ground[3]))
-
+#%%
     filename = "datas/"+checkpoint_fol+"/TBL_eval_"+str(timestep)+".dat"
+    if "datas/"+checkpoint_fol:
+        pass
+    else:
+        os.mkdir("datas/"+checkpoint_fol)
     X, Y, Z = (x_e[0,0,:].shape[0], y_e[0,:,0].shape[0], z_e[:31,0,0].shape[0])
     vars = [('u_ground[m/s]', np.float32(vel_ground[0].reshape(-1))), ('v_ground[m/s]', np.float32(vel_ground[1].reshape(-1))), ('w_ground[m/s]', np.float32(vel_ground[2].reshape(-1))), ('p_ground[Pa]', np.float32(fluc_ground[-1].reshape(-1))),
             ('u_fluc_ground[m/s]', np.float32(fluc_ground[0].reshape(-1))), ('v_fluc_ground[m/s]', np.float32(fluc_ground[1].reshape(-1))), ('w_fluc_ground[m/s]', np.float32(fluc_ground[2].reshape(-1))),
-            ('u_pred[m/s]',np.float32(uvwp[:,0].reshape(32,88,410).reshape(-1))), ('v_pred[m/s]',uvwp[:,1].reshape(32,88,410).reshape(-1)),
-            ('w_pred[m/s]',uvwp[:,2].reshape(32,88,410).reshape(-1)), ('p_pred[Pa]',uvwp[:,3].reshape(-1)),
+            ('u_pred[m/s]',np.float32(uvwp[:,0].reshape(31,88,410).reshape(-1))), ('v_pred[m/s]',uvwp[:,1].reshape(31,88,410).reshape(-1)),
+            ('w_pred[m/s]',uvwp[:,2].reshape(31,88,410).reshape(-1)), ('p_pred[Pa]',uvwp[:,3].reshape(-1)),
             ('u_fluc[m/s]',u_fluc.reshape(-1)), ('v_fluc[m/s]',v_fluc.reshape(-1)), ('w_fluc[m/s]',w_fluc.reshape(-1)),
             ('u_error[m/s]',u_error.reshape(-1)), ('v_error[m/s]',v_error.reshape(-1)), ('w_error[m/s]',w_error.reshape(-1)), ('p_error[Pa]',p_error.reshape(-1)),
             ('vormag[1/s]',vor_mag.reshape(-1)), ('Q[1/s^2]', Q.reshape(-1))]
     fw = 27
     tecplot_Mesh(filename, X, Y, Z, x_e.reshape(-1), y_e.reshape(-1), z_e.reshape(-1), vars, fw)
 
-#%%
