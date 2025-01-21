@@ -103,6 +103,6 @@ if __name__ == "__main__":
     temporal_error = np.concatenate([np.array(temporal_error_vel_list).reshape(-1,1),
                                      np.array(temporal_error_pre_list).reshape(-1,1)],1)
 
-    with open("datas/temporal_error.pkl","wb") as f:
+    with open("datas/"+checkpoint_fol+"/temporal_error.pkl","wb") as f:
         pickle.dump(temporal_error,f)
     f.close()

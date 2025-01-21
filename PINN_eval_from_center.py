@@ -230,10 +230,10 @@ if __name__ == "__main__":
     print(np.linalg.norm(f, ord='fro')/np.linalg.norm(div,ord='fro'))
     print(np.linalg.norm(test_vels[:,3]-test_vels_ext[:,3])/np.linalg.norm(test_vels_ext[:,3]))
 #%%
-with open("datas/train_error_from_center"+checkpoint_fol+".pkl","wb") as f:
+with open("datas/"+checkpoint_fol+"/train_error_from_center.pkl","wb") as f:
     pickle.dump(train_vel_mean_error_list,f)
 f.close()
-with open("datas/valid_error_from_center"+checkpoint_fol+".pkl","wb") as f:
+with open("datas/"+checkpoint_fol+"/valid_error_from_center.pkl","wb") as f:
     pickle.dump(valid_mean_error,f)
 f.close()
 #%%
