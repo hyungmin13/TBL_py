@@ -56,8 +56,8 @@ if __name__ == "__main__":
     with open(path+checkpoint_fol+'/constants_'+ str(checkpoint_fol) +'.pickle','rb') as f:
         a = pickle.load(f)
 
-    a['data_init_kwargs']['path'] = '/home/hgf_dlr/hgf_dzj2734/TBL/DNS/'
-    a['problem_init_kwargs']['path_s'] = '/home/hgf_dlr/hgf_dzj2734/TBL/Ground/'
+    a['data_init_kwargs']['path'] = 'TBL/'
+    a['problem_init_kwargs']['path_s'] = 'Ground/'
     a['problem_init_kwargs']['problem_name'] = 'TBL'
     with open(path+checkpoint_fol+'/constants_'+ str(checkpoint_fol) +'.pickle','wb') as f:
         pickle.dump(a,f)
@@ -71,7 +71,7 @@ if __name__ == "__main__":
                 problem_init_kwargs = values[4],
                 optimization_init_kwargs = values[5],)
     run = PINN(c)
-    with open(run.c.model_out_dir + "saved_dic_6440000.pkl","rb") as f:
+    with open(run.c.model_out_dir + "saved_dic_720000.pkl","rb") as f:
         a = pickle.load(f)
     all_params, model_fn, train_data, valid_data = run.test()
 
@@ -127,7 +127,7 @@ if __name__ == "__main__":
 #%% valid data의 center로부터의 거리에 따라 Error를 표시
     v_pos_un = np.concatenate([valid_data['pos'][:,i:i+1]*all_params["domain"]["in_max"][0,i] 
                                 for i in range(4)],1).reshape((-1,)+output_shape+(4,))
-    v_pos_c = v_pos_un[1,:,:,:,:].reshape(-1,4) - v_pos_un[1,64,64,64,:]
+    v_pos_c = v_pos_un[1,:,:,:,:].reshape(-1,4) - np.array([all_params["domain"]["in_max"].reshape(1,4)/2])
     v_pos_c = np.sqrt(v_pos_c[:,1]**2+v_pos_c[:,2]**2+v_pos_c[:,3]**2)
     v_pos_un = v_pos_un.reshape(-1,4)
     idx = v_pos_c.argsort(0)
@@ -145,16 +145,16 @@ if __name__ == "__main__":
     v_e_l = []
     p_e_l = []
     for i in range(51):
-        v_e = np.sqrt((np.sqrt(out_u[129**3*i:129**3*(i+1),0:1]**2
-                               +out_u[129**3*i:129**3*(i+1),1:2]**2
-                               +out_u[129**3*i:129**3*(i+1),2:3]**2)
-                       -np.sqrt(valid_data['vel'][129**3*i:129**3*(i+1),0:1]**2
-                                +valid_data['vel'][129**3*i:129**3*(i+1),1:2]**2
-                                +valid_data['vel'][129**3*i:129**3*(i+1),2:3]**2))**2)/np.sqrt(valid_data['vel'][129**3*i:129**3*(i+1),0:1]**2
-                                                                                               +valid_data['vel'][129**3*i:129**3*(i+1),1:2]**2
-                                                                                               +valid_data['vel'][129**3*i:129**3*(i+1),2:3]**2)
-        p_e = np.sqrt((out_u[129**3*i:129**3*(i+1),2:3]
-                       -valid_data['vel'][129**3*i:129**3*(i+1),2:3])**2/valid_data['vel'][129**3*i:129**3*(i+1),2:3]**2)
+        v_e = np.sqrt((np.sqrt(out_u[output_shape[0]*output_shape[1]*output_shape[2]*i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),0:1]**2
+                               +out_u[output_shape[0]*output_shape[1]*output_shape[2]**i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),1:2]**2
+                               +out_u[output_shape[0]*output_shape[1]*output_shape[2]*i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),2:3]**2)
+                       -np.sqrt(valid_data['vel'][output_shape[0]*output_shape[1]*output_shape[2]*i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),0:1]**2
+                                +valid_data['vel'][output_shape[0]*output_shape[1]*output_shape[2]*i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),1:2]**2
+                                +valid_data['vel'][output_shape[0]*output_shape[1]*output_shape[2]*i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),2:3]**2))**2)/np.sqrt(valid_data['vel'][output_shape[0]*output_shape[1]*output_shape[2]*i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),0:1]**2
+                                                                                               +valid_data['vel'][output_shape[0]*output_shape[1]*output_shape[2]*i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),1:2]**2
+                                                                                               +valid_data['vel'][output_shape[0]*output_shape[1]*output_shape[2]*i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),2:3]**2)
+        p_e = np.sqrt((out_u[output_shape[0]*output_shape[1]*output_shape[2]*i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),2:3]
+                       -valid_data['vel'][output_shape[0]*output_shape[1]*output_shape[2]*i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),2:3])**2/valid_data['vel'][output_shape[0]*output_shape[1]*output_shape[2]*i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),2:3]**2)
         v_e_l.append(v_e[idx])
         p_e_l.append(p_e[idx])
     v_e_l = np.hstack(v_e_l)

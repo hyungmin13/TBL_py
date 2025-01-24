@@ -81,8 +81,7 @@ def Derivatives(dynamic_params, all_params, g_batch, model_fns):
                   np.abs(0.5 * (deriv_mat[:, i, j] - deriv_mat[:, j, i]))**2 
                   for i in range(3) for j in range(3))
     return uvwp, vor_mag, Q
-#%%
-print(all_params["domain"]["in_max"])
+
 #%%
 if __name__ == "__main__":
     from PINN_domain import *
@@ -99,12 +98,12 @@ if __name__ == "__main__":
     delta = 36.2*10**(-6)
     x_ref_n = 1.0006*10**(-3)/delta
 
-    checkpoint_fol = "TBL_run_06"
+    checkpoint_fol = "TBL_run_09"
     path = "results/summaries/"
     with open(path+checkpoint_fol+'/constants_'+ str(checkpoint_fol) +'.pickle','rb') as f:
         a = pickle.load(f)
-    a['data_init_kwargs']['path'] = '/scratch/hyun/TBL/'
-    a['problem_init_kwargs']['path_s'] = '/scratch/hyun/Ground/'
+    a['data_init_kwargs']['path'] = 'TBL/'
+    a['problem_init_kwargs']['path_s'] = 'Ground/'
     with open(path+checkpoint_fol+'/constants_'+ str(checkpoint_fol) +'.pickle','wb') as f:
         pickle.dump(a,f)
 
@@ -118,7 +117,7 @@ if __name__ == "__main__":
                 optimization_init_kwargs = values[5],)
     run = PINN(c)
 
-    with open(run.c.model_out_dir + "saved_dic_340000.pkl","rb") as f:
+    with open(run.c.model_out_dir + "saved_dic_720000.pkl","rb") as f:
         a = pickle.load(f)
     all_params, model_fn, train_data, valid_data = run.test()
 
@@ -134,7 +133,7 @@ if __name__ == "__main__":
 #%%
     ref_key = ['t_ref', 'x_ref', 'y_ref', 'z_ref', 'u_ref', 'v_ref', 'w_ref']
     ref_data = {ref_key[i]:ref_val for i, ref_val in enumerate(np.concatenate([pos_ref,vel_ref]))}
-    datapath = '/home/bussard/hyun_sh/TBL_PINN/data/PG_TBL_dnsinterp.mat'
+    datapath = 'eval_grid/PG_TBL_dnsinterp.mat'
     data = loadmat(datapath)
     eval_key = ['x', 'y', 'z', 'x_pred', 'y_pred', 'z_pred', 'u1', 'v1', 'w1', 'p1', 'um', 'vm', 'wm']
     DNS_grid = (0.001*data['y'][:,0,0], 0.001*data['x'][0,:,0], 0.001*data['z'][0,0,:])
@@ -177,7 +176,7 @@ if __name__ == "__main__":
     p_error = np.sqrt(np.square(uvwp[:,3].reshape(31,88,410) - fluc_ground[3]))
 #%%
     filename = "datas/"+checkpoint_fol+"/TBL_eval_"+str(timestep)+".dat"
-    if "datas/"+checkpoint_fol:
+    if os.path.isdir("datas/"+checkpoint_fol):
         pass
     else:
         os.mkdir("datas/"+checkpoint_fol)
