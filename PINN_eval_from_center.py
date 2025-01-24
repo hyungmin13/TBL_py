@@ -146,7 +146,7 @@ if __name__ == "__main__":
     p_e_l = []
     for i in range(51):
         v_e = np.sqrt((np.sqrt(out_u[output_shape[0]*output_shape[1]*output_shape[2]*i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),0:1]**2
-                               +out_u[output_shape[0]*output_shape[1]*output_shape[2]**i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),1:2]**2
+                               +out_u[output_shape[0]*output_shape[1]*output_shape[2]*i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),1:2]**2
                                +out_u[output_shape[0]*output_shape[1]*output_shape[2]*i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),2:3]**2)
                        -np.sqrt(valid_data['vel'][output_shape[0]*output_shape[1]*output_shape[2]*i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),0:1]**2
                                 +valid_data['vel'][output_shape[0]*output_shape[1]*output_shape[2]*i:output_shape[0]*output_shape[1]*output_shape[2]*(i+1),1:2]**2
