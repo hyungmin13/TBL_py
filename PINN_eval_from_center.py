@@ -16,6 +16,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import scipy.stats as st
 import h5py
+from tqdm import tqdm
 class Model(struct.PyTreeNode):
     params: Any
     forward: callable = struct.field(pytree_node=False)
@@ -50,15 +51,17 @@ if __name__ == "__main__":
     from PINN_network import *
     from PINN_constants import *
     from PINN_problem import *
-    checkpoint_fol = "TBL_run_06"
+    checkpoint_fol = "TBL_run_09"
     path = "results/summaries/"
     with open(path+checkpoint_fol+'/constants_'+ str(checkpoint_fol) +'.pickle','rb') as f:
         a = pickle.load(f)
-    a['data_init_kwargs']['path'] = '/scratch/hyun/TBL/'
-    a['problem_init_kwargs']['path_s'] = '/scratch/hyun/Ground/'
+
+    a['data_init_kwargs']['path'] = '/home/hgf_dlr/hgf_dzj2734/TBL/DNS/'
+    a['problem_init_kwargs']['path_s'] = '/home/hgf_dlr/hgf_dzj2734/TBL/Ground/'
+    a['problem_init_kwargs']['problem_name'] = 'TBL'
     with open(path+checkpoint_fol+'/constants_'+ str(checkpoint_fol) +'.pickle','wb') as f:
         pickle.dump(a,f)
-
+    f.close()
     values = list(a.values())
 
     c = Constants(run = values[0],
@@ -68,202 +71,130 @@ if __name__ == "__main__":
                 problem_init_kwargs = values[4],
                 optimization_init_kwargs = values[5],)
     run = PINN(c)
-
-    with open(run.c.model_out_dir + "saved_dic_340000.pkl","rb") as f:
+    with open(run.c.model_out_dir + "saved_dic_6440000.pkl","rb") as f:
         a = pickle.load(f)
     all_params, model_fn, train_data, valid_data = run.test()
 
     model = Model(all_params["network"]["layers"], model_fn)
     all_params["network"]["layers"] = from_state_dict(model, a).params
-#%% valid_pred_list_total 는 모든 시간 [i] 에 대해 중심으로 부터의 거리 [j] 에 따른 속도, 압력의 예측값
+#%% train data의 center로부터의 거리에 따라 Error를 표시 - bins 의 크기에 따라 달라지게 해놓았다.
     output_shape = (213,141,61)
     total_spatial_error = []
-    train_pos_unnorm = np.concatenate([train_data['pos'][:,i:i+1]*all_params["domain"]["in_max"][0,i]
+    t_pos_un = np.concatenate([train_data['pos'][:,i:i+1]*all_params["domain"]["in_max"][0,i]
                                  for i in range(4)],1).reshape(-1,4)
-    valid_pos_unnorm = np.concatenate([valid_data['pos'][:,i:i+1]*all_params["domain"]["in_max"][0,i] 
-                                 for i in range(4)],1).reshape((-1,)+output_shape+(4,))
-    
-    train_pos_from_center = train_pos_unnorm - np.array([0,0.028,0.006,0.00212]).reshape(-1,4)
-    train_pos_from_center = np.sqrt(train_pos_from_center[:,1]**2+train_pos_from_center[:,2]**2+train_pos_from_center[:,3]**2)
-    train_pos_unnorm = train_pos_unnorm.reshape(-1,4)
 
-    valid_pos_from_center = valid_pos_unnorm[1,:,:,:,:].reshape(-1,4) - np.array([0,0.028,0.006,0.00212]).reshape(-1,4)
-    valid_pos_from_center = np.sqrt(valid_pos_from_center[:,1]**2+valid_pos_from_center[:,2]**2+valid_pos_from_center[:,3]**2)
-    valid_pos_unnorm = valid_pos_unnorm.reshape(-1,4)
+    t_pos_c = t_pos_un - np.array(all_params["domain"]["in_max"]/2).reshape(-1,4)
+    t_pos_c = np.sqrt(t_pos_c[:,1]**2+t_pos_c[:,2]**2+t_pos_c[:,3]**2)
+    t_pos_un = t_pos_un.reshape(-1,4)
 
-    counts, bins, bars = plt.hist(train_pos_from_center, bins=50)
+    counts, bins, bars = plt.hist(t_pos_c, bins=50)
 
     train_indexes = []
     for i in range(bins.shape[0]-1):
-        index = np.where((train_pos_from_center<bins[i+1])&(train_pos_from_center>=bins[i]))
+        index = np.where((t_pos_c<bins[i+1])&(t_pos_c>=bins[i]))
         train_indexes.append(index[0])
 
-    valid_indexes = []
-    for i in range(bins.shape[0]-1):
-        index = np.where((valid_pos_from_center<bins[i+1])&(valid_pos_from_center>=bins[i]))
-        valid_indexes.append(index[0])
-
-#%%
-    train_vel_sub_list = []
-    train_pos_sub_list = []
-    train_pos_sub_unnorm_list = []
+    t_vel_s_l = []
+    t_pos_s_l = []
     for i in range(len(train_indexes)):
-        train_vel_sub_list.append(train_data['vel'][train_indexes[i],:])
-        train_pos_sub_unnorm_list.append(train_pos_unnorm[train_indexes[i],:])
-        train_pos_sub_list.append(train_data['pos'][train_indexes[i],:])
+        t_vel_s_l.append(train_data['vel'][train_indexes[i],:])
+        t_pos_s_l.append(train_data['pos'][train_indexes[i],:])
 
-#%%
-    train_pred_list_total = []
+    t_p_list = []
     keys = ['u_ref', 'v_ref', 'w_ref', 'u_ref']
-    for i in range(len(train_pos_sub_list)):
-        pred_list = []
-        print(i)
-        for j in range(train_pos_sub_list[i].shape[0]//10000+1):
-            pred = model_fn(all_params, train_pos_sub_list[i][10000*j:10000*(j+1),:])
-            pred_list.append(pred)
-        pred_list = np.concatenate(pred_list,0)
-        pred_unnorm = np.concatenate([pred_list[:,k:(k+1)]*all_params["data"][keys[k]] for k in range(len(keys))],1)
-        pred_unnorm[:,-1] = 1.185*pred_unnorm[:,-1]
-        train_pred_list_total.append(pred_unnorm)
-#%%
-    train_vel_error_list = []
-    for i in range(len(train_pred_list_total)):
-        vel_error_list = []
-        print(i)
-        vel_error_list.append(np.sqrt((np.sqrt(train_pred_list_total[i][:,0]**2+train_pred_list_total[i][:,1]**2+train_pred_list_total[i][:,2]**2)-
-                                       np.sqrt(train_vel_sub_list[i][:,0]**2+train_vel_sub_list[i][:,1]**2+train_vel_sub_list[i][:,2]**2))**2)/
-                                       np.sqrt(train_vel_sub_list[i][:,0]**2+train_vel_sub_list[i][:,1]**2+train_vel_sub_list[i][:,2]**2))
-        train_vel_error_list.append(vel_error_list)
+    for i in tqdm(range(len(t_pos_s_l)),desc="Train data estimation"):
+        p_list = []
+        for j in range(t_pos_s_l[i].shape[0]//10000+1):
+            pred = model_fn(all_params, t_pos_s_l[i][10000*j:10000*(j+1),:])
+            p_list.append(pred)
+        p_list = np.concatenate(p_list,0)
+        p_u = np.concatenate([p_list[:,k:(k+1)]*all_params["data"][keys[k]] for k in range(len(keys))],1)
+        p_u[:,-1] = 1.185*p_u[:,-1]
+        t_p_list.append(p_u)
 
-#%%
+    t_vel_e_l = []
+    for i in range(len(t_p_list)):
+        t_vel_e_l.append(np.sqrt((np.sqrt(t_p_list[i][:,0]**2+t_p_list[i][:,1]**2+t_p_list[i][:,2]**2)-
+                                       np.sqrt(t_vel_s_l[i][:,0]**2+t_vel_s_l[i][:,1]**2+t_vel_s_l[i][:,2]**2))**2)/
+                                       np.sqrt(t_vel_s_l[i][:,0]**2+t_vel_s_l[i][:,1]**2+t_vel_s_l[i][:,2]**2))
     
     dist = getattr(st,"norm")
-    train_vel_mean_error_list = []
-    for i in range(len(train_vel_error_list)):
-        mean_std = dist.fit(train_vel_error_list[i])
-        train_vel_mean_error_list.append(mean_std[0])
-    train_vel_mean_error_list = np.array(train_vel_mean_error_list)
+    t_vel_mean_e = []
+    for i in range(len(t_vel_e_l)):
+        mean_std = dist.fit(t_vel_e_l[i])
+        t_vel_mean_e.append(mean_std[0])
+    t_vel_mean_e = np.array(t_vel_mean_e)
+#%% valid data의 center로부터의 거리에 따라 Error를 표시
+    v_pos_un = np.concatenate([valid_data['pos'][:,i:i+1]*all_params["domain"]["in_max"][0,i] 
+                                for i in range(4)],1).reshape((-1,)+output_shape+(4,))
+    v_pos_c = v_pos_un[1,:,:,:,:].reshape(-1,4) - v_pos_un[1,64,64,64,:]
+    v_pos_c = np.sqrt(v_pos_c[:,1]**2+v_pos_c[:,2]**2+v_pos_c[:,3]**2)
+    v_pos_un = v_pos_un.reshape(-1,4)
+    idx = v_pos_c.argsort(0)
+    d_c, counts = np.unique(v_pos_c,return_counts=True)
 
-#%%
-    valid_vel_sub_t_list = []
-    valid_pos_sub_t_list = []
-    valid_pos_sub_t_unnorm_list = []
-    for j in range(50):
-        vel_sub_list = []
-        pos_sub_list = []
-        pos_sub_unnorm_list = []
-        print(j)
-        for i in range(len(valid_indexes)):
-            #valid_data['vel'][:,3:4] = valid_data['vel'][:,3:4]*1.185
-            vel_sub_list.append(valid_data['vel'][213*141*61*j:213*141*61*(j+1),:][valid_indexes[i],:])
-            pos_sub_unnorm_list.append(valid_pos_unnorm[213*141*61*j:213*141*61*(j+1),:][valid_indexes[i],:])
-            pos_sub_list.append(valid_data['pos'][213*141*61*j:213*141*61*(j+1),:][valid_indexes[i],:])
-        valid_vel_sub_t_list.append(vel_sub_list)
-        valid_pos_sub_t_list.append(pos_sub_list)
-        valid_pos_sub_t_unnorm_list.append(pos_sub_unnorm_list)
-
-    valid_ext_p_list = []
-    for i in range(len(valid_vel_sub_t_list)):
-        ext_p_array = np.mean(np.concatenate(valid_vel_sub_t_list[i],0)[:,3])
-        valid_ext_p_list.append(ext_p_array)
-    for i in range(len(valid_vel_sub_t_list)):
-        for j in range(len(valid_vel_sub_t_list[i])):
-            valid_vel_sub_t_list[i][j][:,3] = valid_vel_sub_t_list[i][j][:,3] - valid_ext_p_list[i]
-
-    valid_pred_list_total = []
+    v_shape = valid_data['pos'].shape[0]
+    outs = []
+    for i in tqdm(range(v_shape//10000+1)):
+        out = model_fn(all_params, valid_data['pos'][10000*i:10000*(i+1),:])
+        outs.append(out)
+    outs = np.concatenate(outs)
     keys = ['u_ref', 'v_ref', 'w_ref', 'u_ref']
-    for i in range(len(valid_pos_sub_t_list)):
-        pred_list = []
-        print(i)
-        for j in range(len(valid_indexes)):
-            valid_pos_unnorm = np.concatenate(valid_pos_sub_t_list[i][j])
-            pred = model_fn(all_params, valid_pos_sub_t_list[i][j])
-            pred_unnorm = np.concatenate([pred[:,k:(k+1)]*all_params["data"][keys[k]] for k in range(len(keys))],1)
-            pred_unnorm[:,-1] = 1.185*pred_unnorm[:,-1]
-            pred_list.append(pred_unnorm)
-        valid_pred_list_total.append(pred_list)
-    valid_test_p_list = []
-    for i in range(len(valid_pred_list_total)):
-        test_p_array = np.mean(np.concatenate(valid_pred_list_total[i],0)[:,-1])
-        valid_test_p_list.append(test_p_array)
-    for i in range(len(valid_pred_list_total)):
-        for j in range(len(valid_pred_list_total[i])):
-            valid_pred_list_total[i][j][:,-1] = valid_pred_list_total[i][j][:,-1] - valid_test_p_list[i]
+    out_u = np.concatenate([all_params["data"][keys[i]]*outs[:,i:(i+1)] for i in range(len(keys))],1)
 
-    valid_vel_error_t_list = []
-    valid_pre_error_t_list = []
-    for i in range(len(valid_pred_list_total)):
-        vel_error_list = []
-        pre_error_list = []
-        print(i)
-        for j in range(len(valid_pred_list_total[i])):
-            vel_error_list.append(np.sqrt((np.sqrt(valid_pred_list_total[i][j][:,0]**2+valid_pred_list_total[i][j][:,1]**2+valid_pred_list_total[i][j][:,2]**2)-np.sqrt(valid_vel_sub_t_list[i][j][:,0]**2+valid_vel_sub_t_list[i][j][:,1]**2+valid_vel_sub_t_list[i][j][:,2]**2))**2)/np.sqrt(valid_vel_sub_t_list[i][j][:,0]**2+valid_vel_sub_t_list[i][j][:,1]**2+valid_vel_sub_t_list[i][j][:,2]**2))
-            pre_error_list.append(np.sqrt((np.sqrt(valid_pred_list_total[i][j][:,3]**2)-np.sqrt(valid_vel_sub_t_list[i][j][:,3]**2))**2))
-        valid_vel_error_t_list.append(vel_error_list)
-        valid_pre_error_t_list.append(pre_error_list)
-#%%
-    dist = getattr(st,"norm")
-    valid_vel_mean_error_list = []
-    for i in range(len(valid_vel_error_t_list[10])):
-        mean_std = dist.fit(valid_vel_error_t_list[10][i])
-        valid_vel_mean_error_list.append(mean_std[0])
-    valid_vel_mean_error_list = np.array(valid_vel_mean_error_list)
-#%%
-    dist = getattr(st,"norm")
-    valid_pre_mean_error_list = []
-    for i in range(len(valid_pre_error_t_list[10])):
-        mean_std = dist.fit(valid_pre_error_t_list[10][i])
-        valid_pre_mean_error_list.append(mean_std[0])
-    valid_pre_mean_error_list = np.array(valid_pre_mean_error_list)
-#%%
-    valid_mean_error = np.concatenate([valid_vel_mean_error_list.reshape(-1,1),
-                                        valid_pre_mean_error_list.reshape(-1,1)],1)
-#%%
-    test_vels = np.concatenate(valid_pred_list_total[25])
-    test_vels_ext = np.concatenate(valid_vel_sub_t_list[25])
-#%%
-    f = np.concatenate([(test_vels[:,0]-test_vels_ext[:,0]).reshape(-1,1),
-                        (test_vels[:,1]-test_vels_ext[:,1]).reshape(-1,1),
-                        (test_vels[:,2]-test_vels_ext[:,2]).reshape(-1,1)],1)
-    div = np.concatenate([test_vels_ext[:,0].reshape(-1,1), test_vels_ext[:,1].reshape(-1,1),
-                          test_vels_ext[:,2].reshape(-1,1)],1)
-    print(np.linalg.norm(f, ord='fro')/np.linalg.norm(div,ord='fro'))
-    print(np.linalg.norm(test_vels[:,3]-test_vels_ext[:,3])/np.linalg.norm(test_vels_ext[:,3]))
-#%%
-with open("datas/"+checkpoint_fol+"/train_error_from_center.pkl","wb") as f:
-    pickle.dump(train_vel_mean_error_list,f)
-f.close()
-with open("datas/"+checkpoint_fol+"/valid_error_from_center.pkl","wb") as f:
-    pickle.dump(valid_mean_error,f)
-f.close()
-#%%
-"""
-from scipy.integrate import tplquad
-L = 0.056
-W = 0.012
-H = 0.00424
-def sphere_condition(x,y,z):
-    return x**2+y**2+z**2<r**2
-def intergrand(x,y,z):
-    return 1 if sphere_condition(x,y,z) else 0
-volumes = []
-for i in range(len(bins)):
-    print(i)
-    r = bins[i]
-    volume, error = tplquad(intergrand, -L/2, L/2, lambda x:-W/2, lambda x:W/2, lambda x,y:-H/2, lambda x,y:H/2)
-    volumes.append(volume)
-    sub_volumes = np.array(volumes[1:])-np.array(volumes[:-1])
-    c_vol_avg = np.array(counts)/np.array(sub_volumes)
-    plt.hist(bins[:-1], bins,weights=c_vol_avg)
-    plt.show()
-with open("datas/sub_volumes.pkl","wb") as f:
-    pickle.dump(sub_volumes,f)
-f.close()
-with open("datas/counts.pkl","wb") as f:
-    pickle.dump(counts,f)
-f.close()
-"""
+    v_e_l = []
+    p_e_l = []
+    for i in range(51):
+        v_e = np.sqrt((np.sqrt(out_u[129**3*i:129**3*(i+1),0:1]**2
+                               +out_u[129**3*i:129**3*(i+1),1:2]**2
+                               +out_u[129**3*i:129**3*(i+1),2:3]**2)
+                       -np.sqrt(valid_data['vel'][129**3*i:129**3*(i+1),0:1]**2
+                                +valid_data['vel'][129**3*i:129**3*(i+1),1:2]**2
+                                +valid_data['vel'][129**3*i:129**3*(i+1),2:3]**2))**2)/np.sqrt(valid_data['vel'][129**3*i:129**3*(i+1),0:1]**2
+                                                                                               +valid_data['vel'][129**3*i:129**3*(i+1),1:2]**2
+                                                                                               +valid_data['vel'][129**3*i:129**3*(i+1),2:3]**2)
+        p_e = np.sqrt((out_u[129**3*i:129**3*(i+1),2:3]
+                       -valid_data['vel'][129**3*i:129**3*(i+1),2:3])**2/valid_data['vel'][129**3*i:129**3*(i+1),2:3]**2)
+        v_e_l.append(v_e[idx])
+        p_e_l.append(p_e[idx])
+    v_e_l = np.hstack(v_e_l)
+    p_e_l = np.hstack(p_e_l)
 
-#%%
+    v_e_t_mean = []
+    p_e_t_mean = []
+    cnt = 0
+    for i in range(len(counts)):
+        v_e_t_mean.append(np.mean(v_e_l[cnt:cnt+counts[i],:]))
+        p_e_t_mean.append(np.mean(p_e_l[cnt:cnt+counts[i],:]))
+        cnt = cnt+counts[i]
+    v_e_mean = []
+    p_e_mean = []
+    for i in range(v_e_l.shape[1]):
+        cnt = 0
+        v_mean = []
+        p_mean = []
+        for j in range(len(counts)):
+            v_mean.append(np.mean(v_e_l[cnt:cnt+counts[j],:]))
+            p_mean.append(np.mean(p_e_l[cnt:cnt+counts[j],:]))
+            cnt = cnt+counts[i]
+        v_e_mean.append(np.vstack(v_mean))
+        p_e_mean.append(np.vstack(p_mean))
+    v_e_mean = np.hstack(v_e_mean)
+    p_e_mean = np.hstack(p_e_mean)
 
+    e_t_mean = {"vel":v_e_t_mean, "pre":p_e_t_mean}
+    e_mean = {"vel":v_e_mean, "pre":p_e_mean}
 
+    if os.path.isdir("datas/"+checkpoint_fol):
+        pass
+    else:
+        os.mkdir("datas/"+checkpoint_fol)
+    with open("datas/"+checkpoint_fol+"/train_error_from_center.pkl","wb") as f:
+        pickle.dump(t_vel_mean_e,f)
+    f.close()
+    with open("datas/"+checkpoint_fol+"/valid_error_from_center_total.pkl","wb") as f:
+        pickle.dump(e_t_mean,f)
+    f.close()
+    with open("datas/"+checkpoint_fol+"/valid_error_from_center.pkl","wb") as f:
+        pickle.dump(e_mean,f)
+    f.close()
