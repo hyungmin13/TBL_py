@@ -134,7 +134,7 @@ if __name__ == "__main__":
 #%%
     ref_key = ['t_ref', 'x_ref', 'y_ref', 'z_ref', 'u_ref', 'v_ref', 'w_ref']
     ref_data = {ref_key[i]:ref_val for i, ref_val in enumerate(np.concatenate([pos_ref,vel_ref]))}
-    datapath = '/home/bussard/hyun_sh/TBL_PINN/data/PG_TBL_dnsinterp.mat'
+    datapath = 'eval_grid/PG_TBL_dnsinterp.mat'
     data = loadmat(datapath)
     eval_key = ['x', 'y', 'z', 'x_pred', 'y_pred', 'z_pred', 'u1', 'v1', 'w1', 'p1', 'um', 'vm', 'wm']
     DNS_grid = (0.001*data['y'][:,0,0], 0.001*data['x'][0,:,0], 0.001*data['z'][0,0,:])
