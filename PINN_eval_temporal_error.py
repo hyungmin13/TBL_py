@@ -50,12 +50,19 @@ if __name__ == "__main__":
     from PINN_network import *
     from PINN_constants import *
     from PINN_problem import *
-    checkpoint_fol = "TBL_run_06"
+    import argparse
+    from glob import glob
+    #checkpoint_fol = "TBL_run_09"
+    parser = argparse.ArgumentParser(description='TBL_PINN')
+    parser.add_argument('-c', '--checkpoint', type=str, help='checkpoint', default="")
+    args = parser.parse_args()
+    checkpoint_fol = args.checkpoint
+    print(checkpoint_fol, type(checkpoint_fol))
     path = "results/summaries/"
     with open(path+checkpoint_fol+'/constants_'+ str(checkpoint_fol) +'.pickle','rb') as f:
         a = pickle.load(f)
-    a['data_init_kwargs']['path'] = '/scratch/hyun/TBL/'
-    a['problem_init_kwargs']['path_s'] = '/scratch/hyun/Ground/'
+    a['data_init_kwargs']['path'] = 'DNS/'
+    a['problem_init_kwargs']['path_s'] = 'Ground/'
     with open(path+checkpoint_fol+'/constants_'+ str(checkpoint_fol) +'.pickle','wb') as f:
         pickle.dump(a,f)
 
@@ -68,8 +75,12 @@ if __name__ == "__main__":
                 problem_init_kwargs = values[4],
                 optimization_init_kwargs = values[5],)
     run = PINN(c)
-
-    with open(run.c.model_out_dir + "saved_dic_340000.pkl","rb") as f:
+    #checkpoint_list = np.sort(glob(run.c.model_out_dir+'/*.pkl'))
+    #with open(run.c.model_out_dir + "saved_dic_720000.pkl","rb") as f:
+    
+    checkpoint_list = sorted(glob(run.c.model_out_dir+'/*.pkl'), key=lambda x: int(x.split('_')[4].split('.')[0]))
+    print(checkpoint_list)
+    with open(checkpoint_list[-1],'rb') as f:
         a = pickle.load(f)
     all_params, model_fn, train_data, valid_data = run.test()
 
@@ -102,6 +113,11 @@ if __name__ == "__main__":
 
     temporal_error = np.concatenate([np.array(temporal_error_vel_list).reshape(-1,1),
                                      np.array(temporal_error_pre_list).reshape(-1,1)],1)
+
+    if os.path.isdir("datas/"+checkpoint_fol):
+        pass
+    else:
+        os.mkdir("datas/"+checkpoint_fol)
 
     with open("datas/"+checkpoint_fol+"/temporal_error.pkl","wb") as f:
         pickle.dump(temporal_error,f)
