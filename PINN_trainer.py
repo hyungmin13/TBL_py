@@ -15,6 +15,7 @@ import pickle
 from pathlib import Path
 import matplotlib.pyplot as plt
 import scipy.stats as st
+from time import time
 class Model(struct.PyTreeNode):
     params: Any
     forward: callable = struct.field(pytree_node=False)
@@ -35,17 +36,19 @@ def equ_func2(all_params, g_batch, cotangent, model_fns):
     out, out_t = jax.jvp(u_t, (g_batch,), (cotangent,))
     return out, out_t
 
-def PINN_loss(dynamic_params, all_params, g_batch, particles, particle_vel, boundaries, model_fns):
+def PINN_loss2(dynamic_params, all_params, g_batch, particles, particle_vel, model_fns):
     all_params["network"]["layers"] = dynamic_params
     weights = all_params["problem"]["loss_weights"]
+    
     out, out_t = equ_func2(all_params, g_batch, jnp.tile(jnp.array([[1.0, 0.0, 0.0, 0.0]]),(g_batch.shape[0],1)),model_fns)
     out_x, out_xx = equ_func(all_params, g_batch, jnp.tile(jnp.array([[0.0, 1.0, 0.0, 0.0]]),(g_batch.shape[0],1)),model_fns)
     out_y, out_yy = equ_func(all_params, g_batch, jnp.tile(jnp.array([[0.0, 0.0, 1.0, 0.0]]),(g_batch.shape[0],1)),model_fns)
     out_z, out_zz = equ_func(all_params, g_batch, jnp.tile(jnp.array([[0.0, 0.0, 0.0, 1.0]]),(g_batch.shape[0],1)),model_fns)
-
+    
     p_out = model_fns(all_params, particles)
-    b_out = model_fns(all_params, boundaries)
+    #b_out = model_fns(all_params, boundaries)
     #out, out_t, out_x, out_xx, out_y, out_yy, out_z, out_zz = eqn_func(g_batch)
+    
     u = all_params["data"]['u_ref']*out[:,0:1]
     v = all_params["data"]['v_ref']*out[:,1:2]
     w = all_params["data"]['w_ref']*out[:,2:3]
@@ -80,40 +83,125 @@ def PINN_loss(dynamic_params, all_params, g_batch, particles, particle_vel, boun
     uzz = all_params["data"]['u_ref']*out_zz[:,0:1]/all_params["data"]["domain_range"]["z"][1]**2
     vzz = all_params["data"]['v_ref']*out_zz[:,1:2]/all_params["data"]["domain_range"]["z"][1]**2
     wzz = all_params["data"]['w_ref']*out_zz[:,2:3]/all_params["data"]["domain_range"]["z"][1]**2
-       
+    
 
-    loss_u = all_params["data"]['u_ref']*p_out[:,0:1] - particle_vel[:,0:1]
+    loss_u = (all_params["data"]['u_ref']*p_out[:,0:1] - particle_vel[:,0:1])/all_params["data"]['u_ref']
     loss_u = jnp.mean(loss_u**2)
 
-    loss_v = all_params["data"]['v_ref']*p_out[:,1:2] - particle_vel[:,1:2]
+    loss_v = (all_params["data"]['v_ref']*p_out[:,1:2] - particle_vel[:,1:2])/all_params["data"]['v_ref']
     loss_v = jnp.mean(loss_v**2)
 
-    loss_w = all_params["data"]['w_ref']*p_out[:,2:3] - particle_vel[:,2:3]
+    loss_w = (all_params["data"]['w_ref']*p_out[:,2:3] - particle_vel[:,2:3])/all_params["data"]['w_ref']
     loss_w = jnp.mean(loss_w**2)
     
-    loss_u_b = all_params["data"]['u_ref']*b_out[:,0:1]
-    loss_u_b = jnp.mean(loss_u_b**2)
+    #loss_u_b = all_params["data"]['u_ref']*b_out[:,0:1]
+    #loss_u_b = jnp.mean(loss_u_b**2)
 
-    loss_v_b = all_params["data"]['v_ref']*b_out[:,1:2]
-    loss_v_b = jnp.mean(loss_v_b**2)
+    #loss_v_b = all_params["data"]['v_ref']*b_out[:,1:2]
+    #loss_v_b = jnp.mean(loss_v_b**2)
 
-    loss_w_b = all_params["data"]['w_ref']*b_out[:,2:3]
-    loss_w_b = jnp.mean(loss_w_b**2)
+    #loss_w_b = all_params["data"]['w_ref']*b_out[:,2:3]
+    #loss_w_b = jnp.mean(loss_w_b**2)
     
     loss_con = ux + vy + wz
     loss_con = jnp.mean(loss_con**2)
     loss_NS1 = ut + u*ux + v*uy + w*uz + px -\
-               all_params["data"]["viscosity"]*(uxx+uyy+uzz)-2.22*10**(-1)/(3*0.43685**2)*u
+               all_params["data"]["viscosity"]*(uxx+uyy+uzz)
     loss_NS1 = jnp.mean(loss_NS1**2)
     loss_NS2 = vt + u*vx + v*vy + w*vz + py -\
-               all_params["data"]["viscosity"]*(vxx+vyy+vzz)-2.22*10**(-1)/(3*0.43685**2)*v
+               all_params["data"]["viscosity"]*(vxx+vyy+vzz)
     loss_NS2 = jnp.mean(loss_NS2**2)
-    loss_NS3 = wt + u*wx + v*wy + w*wz + pz - all_params["data"]["viscosity"]*(wxx+wyy+wzz)-2.22*10**(-1)/(3*0.43685**2)*w
+    loss_NS3 = wt + u*wx + v*wy + w*wz + pz - all_params["data"]["viscosity"]*(wxx+wyy+wzz)
 
     loss_NS3 = jnp.mean(loss_NS3**2)
     total_loss = weights[0]*loss_u + weights[1]*loss_v + weights[2]*loss_w + \
                  weights[3]*loss_con + weights[4]*loss_NS1 + weights[5]*loss_NS2 + \
-                 weights[6]*loss_NS3 + weights[7]*(loss_u_b + loss_v_b + loss_w_b)
+                 weights[6]*loss_NS3 #+ weights[7]*(loss_u_b + loss_v_b + loss_w_b)
+    return total_loss, loss_u, loss_v, loss_w, loss_con, loss_NS1, loss_NS2, loss_NS3
+
+
+
+def PINN_loss(dynamic_params, all_params, g_batch, particles, particle_vel, boundaries, model_fns):
+    all_params["network"]["layers"] = dynamic_params
+    weights = all_params["problem"]["loss_weights"]
+    
+    out, out_t = equ_func2(all_params, g_batch, jnp.tile(jnp.array([[1.0, 0.0, 0.0, 0.0]]),(g_batch.shape[0],1)),model_fns)
+    out_x, out_xx = equ_func(all_params, g_batch, jnp.tile(jnp.array([[0.0, 1.0, 0.0, 0.0]]),(g_batch.shape[0],1)),model_fns)
+    out_y, out_yy = equ_func(all_params, g_batch, jnp.tile(jnp.array([[0.0, 0.0, 1.0, 0.0]]),(g_batch.shape[0],1)),model_fns)
+    out_z, out_zz = equ_func(all_params, g_batch, jnp.tile(jnp.array([[0.0, 0.0, 0.0, 1.0]]),(g_batch.shape[0],1)),model_fns)
+    
+    p_out = model_fns(all_params, particles)
+    #b_out = model_fns(all_params, boundaries)
+    #out, out_t, out_x, out_xx, out_y, out_yy, out_z, out_zz = eqn_func(g_batch)
+    
+    u = all_params["data"]['u_ref']*out[:,0:1]
+    v = all_params["data"]['v_ref']*out[:,1:2]
+    w = all_params["data"]['w_ref']*out[:,2:3]
+
+    ut = all_params["data"]['u_ref']*out_t[:,0:1]/all_params["data"]["domain_range"]["t"][1]
+    vt = all_params["data"]['v_ref']*out_t[:,1:2]/all_params["data"]["domain_range"]["t"][1]
+    wt = all_params["data"]['w_ref']*out_t[:,2:3]/all_params["data"]["domain_range"]["t"][1]
+
+    ux = all_params["data"]['u_ref']*out_x[:,0:1]/all_params["data"]["domain_range"]["x"][1]
+    vx = all_params["data"]['v_ref']*out_x[:,1:2]/all_params["data"]["domain_range"]["x"][1]
+    wx = all_params["data"]['w_ref']*out_x[:,2:3]/all_params["data"]["domain_range"]["x"][1]
+    px = all_params["data"]['u_ref']*out_x[:,3:4]/all_params["data"]["domain_range"]["x"][1]
+
+    uy = all_params["data"]['u_ref']*out_y[:,0:1]/all_params["data"]["domain_range"]["y"][1]
+    vy = all_params["data"]['v_ref']*out_y[:,1:2]/all_params["data"]["domain_range"]["y"][1]
+    wy = all_params["data"]['w_ref']*out_y[:,2:3]/all_params["data"]["domain_range"]["y"][1]
+    py = all_params["data"]['u_ref']*out_y[:,3:4]/all_params["data"]["domain_range"]["y"][1]
+
+    uz = all_params["data"]['u_ref']*out_z[:,0:1]/all_params["data"]["domain_range"]["z"][1]
+    vz = all_params["data"]['v_ref']*out_z[:,1:2]/all_params["data"]["domain_range"]["z"][1]
+    wz = all_params["data"]['w_ref']*out_z[:,2:3]/all_params["data"]["domain_range"]["z"][1]
+    pz = all_params["data"]['u_ref']*out_z[:,3:4]/all_params["data"]["domain_range"]["z"][1]
+
+    uxx = all_params["data"]['u_ref']*out_xx[:,0:1]/all_params["data"]["domain_range"]["x"][1]**2
+    vxx = all_params["data"]['v_ref']*out_xx[:,1:2]/all_params["data"]["domain_range"]["x"][1]**2
+    wxx = all_params["data"]['w_ref']*out_xx[:,2:3]/all_params["data"]["domain_range"]["x"][1]**2
+
+    uyy = all_params["data"]['u_ref']*out_yy[:,0:1]/all_params["data"]["domain_range"]["y"][1]**2
+    vyy = all_params["data"]['v_ref']*out_yy[:,1:2]/all_params["data"]["domain_range"]["y"][1]**2
+    wyy = all_params["data"]['w_ref']*out_yy[:,2:3]/all_params["data"]["domain_range"]["y"][1]**2
+
+    uzz = all_params["data"]['u_ref']*out_zz[:,0:1]/all_params["data"]["domain_range"]["z"][1]**2
+    vzz = all_params["data"]['v_ref']*out_zz[:,1:2]/all_params["data"]["domain_range"]["z"][1]**2
+    wzz = all_params["data"]['w_ref']*out_zz[:,2:3]/all_params["data"]["domain_range"]["z"][1]**2
+    
+
+    loss_u = (all_params["data"]['u_ref']*p_out[:,0:1] - particle_vel[:,0:1])/all_params["data"]['u_ref']
+    loss_u = jnp.mean(loss_u**2)
+
+    loss_v = (all_params["data"]['v_ref']*p_out[:,1:2] - particle_vel[:,1:2])/all_params["data"]['v_ref']
+    loss_v = jnp.mean(loss_v**2)
+
+    loss_w = (all_params["data"]['w_ref']*p_out[:,2:3] - particle_vel[:,2:3])/all_params["data"]['w_ref']
+    loss_w = jnp.mean(loss_w**2)
+    
+    #loss_u_b = all_params["data"]['u_ref']*b_out[:,0:1]
+    #loss_u_b = jnp.mean(loss_u_b**2)
+
+    #loss_v_b = all_params["data"]['v_ref']*b_out[:,1:2]
+    #loss_v_b = jnp.mean(loss_v_b**2)
+
+    #loss_w_b = all_params["data"]['w_ref']*b_out[:,2:3]
+    #loss_w_b = jnp.mean(loss_w_b**2)
+    
+    loss_con = ux + vy + wz
+    loss_con = jnp.mean(loss_con**2)
+    loss_NS1 = ut + u*ux + v*uy + w*uz + px -\
+               all_params["data"]["viscosity"]*(uxx+uyy+uzz)
+    loss_NS1 = jnp.mean(loss_NS1**2)
+    loss_NS2 = vt + u*vx + v*vy + w*vz + py -\
+               all_params["data"]["viscosity"]*(vxx+vyy+vzz)
+    loss_NS2 = jnp.mean(loss_NS2**2)
+    loss_NS3 = wt + u*wx + v*wy + w*wz + pz - all_params["data"]["viscosity"]*(wxx+wyy+wzz)
+
+    loss_NS3 = jnp.mean(loss_NS3**2)
+    total_loss = weights[0]*loss_u + weights[1]*loss_v + weights[2]*loss_w + \
+                 weights[3]*loss_con + weights[4]*loss_NS1 + weights[5]*loss_NS2 + \
+                 weights[6]*loss_NS3 #+ weights[7]*(loss_u_b + loss_v_b + loss_w_b)
     return total_loss
 
 @partial(jax.jit, static_argnums=(1, 4, 9))
@@ -139,7 +227,8 @@ class PINN(PINNbase):
         key, network_key = random.split(global_key)
         all_params["network"] = self.c.network.init_params(**self.c.network_init_kwargs)
         all_params["problem"] = self.c.problem.init_params(**self.c.problem_init_kwargs)
-        optimiser = self.c.optimization_init_kwargs["optimiser"](self.c.optimization_init_kwargs["learning_rate"])
+        learn_rate = optax.exponential_decay(self.c.optimization_init_kwargs["learning_rate"],8000,0.9)
+        optimiser = self.c.optimization_init_kwargs["optimiser"](learn_rate)
         grids, all_params = self.c.domain.sampler(all_params)
         train_data, all_params = self.c.data.train_data(all_params)
         all_params = self.c.problem.constraints(all_params)
@@ -189,7 +278,7 @@ class PINN(PINNbase):
                              random.choice(b_key,grids['bczl']['y'],shape=(self.c.optimization_init_kwargs["e_batch"],)),
                              random.choice(b_key,np.array([0]),shape=(self.c.optimization_init_kwargs["e_batch"],))],axis=1)
         update = PINN_update.lower(model_states, optimiser_fn, dynamic_params, ab, ad, g_batch, p_batch, v_batch, b_batch, model_fn).compile()
-        
+        init_time = time()
         for i in tqdm(range(self.c.optimization_init_kwargs["n_steps"])):
             template = ("iteration {}, loss_val {}")
             p_key = next(p_batch_keys)
@@ -211,7 +300,7 @@ class PINN(PINNbase):
             lossval, model_states, dynamic_params = update(model_states, dynamic_params, ab, g_batch, p_batch, v_batch, b_batch)
         
         
-            self.report(i, model_states, dynamic_params, all_params, p_batch, v_batch, valid_data, e_batch_keys, model_fn)
+            self.report(i, init_time, model_states, dynamic_params, all_params, g_batch, p_batch, v_batch, valid_data, e_batch_keys, model_fn)
 
     def test(self):
         all_params = {"domain":{}, "data":{}, "network":{}, "problem":{}}
@@ -230,8 +319,13 @@ class PINN(PINNbase):
         optimiser_fn = optimiser.update
         model_fn = c.network.network_fn
         return all_params, model_fn, train_data, valid_data
-    def report(self, i, model_states, dynamic_params, all_params, p_batch, v_batch, valid_data, e_batch_key, model_fns):
-        model_save = (i % 20000 == 0)
+    def report(self, i, init_time, model_states, dynamic_params, all_params, g_batch, p_batch, v_batch, valid_data, e_batch_key, model_fns):
+        current_time = time()
+        #if (time()-init_time)/60>5:
+        model_save = (i % 2000 == 0)
+        #else:
+        #    model_save = False
+        
         if model_save:
             all_params["network"]["layers"] = dynamic_params
             e_key = next(e_batch_key)
@@ -243,16 +337,17 @@ class PINN(PINNbase):
             v_error = jnp.sqrt(jnp.mean((all_params["data"]["v_ref"]*v_pred2[:,1:2] - e_batch_vel[:,1:2])**2)/jnp.mean(e_batch_vel[:,1:2]**2))
             w_error = jnp.sqrt(jnp.mean((all_params["data"]["w_ref"]*v_pred2[:,2:3] - e_batch_vel[:,2:3])**2)/jnp.mean(e_batch_vel[:,2:3]**2))
             p_error = jnp.sqrt(jnp.mean((p_new - e_batch_vel[:,3:])**2)/jnp.mean(e_batch_vel[:,3:4]**2))
-            v_pred = model_fns(all_params, p_batch)
-            u_loss = jnp.mean((all_params["data"]["u_ref"]*v_pred[:,0:1] - v_batch[:,0:1])**2)
-            v_loss = jnp.mean((all_params["data"]["v_ref"]*v_pred[:,1:2] - v_batch[:,1:2])**2)
-            w_loss = jnp.mean((all_params["data"]["w_ref"]*v_pred[:,2:3] - v_batch[:,2:3])**2)
+            t_loss, u_loss, v_loss, w_loss, con_loss, NS1_loss, NS2_loss, NS3_loss = PINN_loss2(dynamic_params, all_params, g_batch, p_batch, v_batch, model_fns)
+            #v_pred = model_fns(all_params, p_batch)
+            #u_loss = jnp.mean(((all_params["data"]["u_ref"]*v_pred[:,0:1] - v_batch[:,0:1])/all_params["data"]["u_ref"])**2)
+            #v_loss = jnp.mean(((all_params["data"]["v_ref"]*v_pred[:,1:2] - v_batch[:,1:2])/all_params["data"]["v_ref"])**2)
+            #w_loss = jnp.mean(((all_params["data"]["w_ref"]*v_pred[:,2:3] - v_batch[:,2:3])/all_params["data"]["w_ref"])**2)
             model = Model(all_params["network"]["layers"], model_fns)
             serialised_model = to_state_dict(model)
             with open(self.c.model_out_dir + "saved_dic_"+str(i)+".pkl","wb") as f:
                 pickle.dump(serialised_model,f)
             
-            print(u_loss, v_loss, w_loss, u_error, v_error, w_error, p_error)
+            print('1st', t_loss, u_loss, v_loss, w_loss, con_loss, NS1_loss, NS2_loss, NS3_loss, u_error, v_error, w_error, p_error)
 
         return
 
@@ -263,7 +358,7 @@ if __name__=="__main__":
     from PINN_network import *
     from PINN_constants import *
     from PINN_problem import *
-    run = "TBL_run_01"
+    run = "TBL_run_test48"
     all_params = {"domain":{}, "data":{}, "network":{}, "problem":{}}
 
     # Set Domain params
@@ -273,7 +368,7 @@ if __name__=="__main__":
     bound_keys = ['ic', 'bcxu', 'bcxl', 'bcyu', 'bcyl', 'bczu', 'bczl']
 
     # Set Data params
-    path = '/scratch/hyun/TBL/'
+    path = 'TBL/'
     timeskip = 1
     track_limit = 424070
     viscosity = 15*10**(-6)
@@ -281,13 +376,13 @@ if __name__=="__main__":
     
     # Set network params
     key = random.PRNGKey(1)
-    layer_sizes = [4, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 4]
+    layer_sizes = [4, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 4]
     network_name = 'MLP'
 
     # Set problem params
     viscosity = 15e-6
-    loss_weights = (1.0, 1.0, 1.0, 0.0000001, 0.00000001, 0.00000001, 0.00000001, 1.0)
-    path_s = '/scratch/hyun/Ground/'
+    loss_weights = (100, 100, 100, 0.0000004, 0.00000004, 0.00000004, 0.00000004)
+    path_s = 'Ground/'
     problem_name = 'TBL'
     # Set optimization params
     n_steps = 100000000
