@@ -108,12 +108,7 @@ if __name__ == "__main__":
     x_ref_n = 1.0006*10**(-3)/delta
 
     timestep = 24
-    pos_ref = all_params["domain"]["in_max"].flatten()
-    vel_ref = np.array([all_params["data"]["u_ref"],
-                        all_params["data"]["v_ref"],
-                        all_params["data"]["w_ref"]])
-    ref_key = ['t_ref', 'x_ref', 'y_ref', 'z_ref', 'u_ref', 'v_ref', 'w_ref']
-    ref_data = {ref_key[i]:ref_val for i, ref_val in enumerate(np.concatenate([pos_ref,vel_ref]))}
+
     datapath = '/scratch/hyun/PG_TBL_dnsinterp.mat'
     data = loadmat(datapath)
     eval_key = ['x', 'y', 'z', 'x_pred', 'y_pred', 'z_pred', 'u1', 'v1', 'w1', 'p1', 'um', 'vm', 'wm']
@@ -128,12 +123,7 @@ if __name__ == "__main__":
     V_mag = np.sqrt(fluc_ground[0]**2+fluc_ground[1]**2+fluc_ground[2]**2)
     div_list = [V_mag, V_mag, V_mag, fluc_ground[-1]]
     fluc_ground[-1] = (fluc_ground[-1]*u_ref_n**2 - 0.0025*eval_grid[:,1].reshape(31,88,410)[0,0,:]*x_ref_n)/u_ref_n**2
-    eval_grid_n = np.concatenate([np.zeros((eval_grid.shape[0],1))+timestep*(1/17594),
-                                eval_grid[:,1:2], eval_grid[:,0:1], eval_grid[:,2:3]],1)
-    for i in range(eval_grid_n.shape[1]): eval_grid_n[:,i] = eval_grid_n[:,i]/ref_data[ref_key[i]] 
 
-    p_cent3 = p_cent - 0.0025*eval_grid[:,1].reshape(31,88,410)[0,0,:]*1.185*x_ref_n/u_ref_n**2
-    p_cent3 = p_cent3 - np.mean(p_cent3)
 
     checkpoint_list = sorted(glob(run.c.model_out_dir+'/*.pkl'), key=lambda x: int(x.split('_')[4].split('.')[0]))
     pre_error_list = []
@@ -145,6 +135,20 @@ if __name__ == "__main__":
 
         model = Model(all_params["network"]["layers"], model_fn)
         all_params["network"]["layers"] = from_state_dict(model, a).params
+
+        pos_ref = all_params["domain"]["in_max"].flatten()
+        vel_ref = np.array([all_params["data"]["u_ref"],
+                            all_params["data"]["v_ref"],
+                            all_params["data"]["w_ref"]])
+        ref_key = ['t_ref', 'x_ref', 'y_ref', 'z_ref', 'u_ref', 'v_ref', 'w_ref']
+        ref_data = {ref_key[i]:ref_val for i, ref_val in enumerate(np.concatenate([pos_ref,vel_ref]))}
+
+        eval_grid_n = np.concatenate([np.zeros((eval_grid.shape[0],1))+timestep*(1/17594),
+                                    eval_grid[:,1:2], eval_grid[:,0:1], eval_grid[:,2:3]],1)
+        for i in range(eval_grid_n.shape[1]): eval_grid_n[:,i] = eval_grid_n[:,i]/ref_data[ref_key[i]] 
+
+        p_cent3 = p_cent - 0.0025*eval_grid[:,1].reshape(31,88,410)[0,0,:]*1.185*x_ref_n/u_ref_n**2
+        p_cent3 = p_cent3 - np.mean(p_cent3)
 
         pred = np.concatenate([model_fn(all_params, eval_grid_n[10000*i:10000*(i+1),:]) for i in range(eval_grid_n.shape[0]//10000+1)],0)
         ref_key = ['t_ref', 'x_ref', 'y_ref', 'z_ref', 'u_ref', 'v_ref', 'w_ref', 'u_ref']
