@@ -281,7 +281,7 @@ class PINN(PINNbase):
                              random.choice(b_key,np.array([0]),shape=(self.c.optimization_init_kwargs["e_batch"],))],axis=1)
         update = PINN_update.lower(model_states, optimiser_fn, dynamic_params, ab, ad, g_batch, p_batch, v_batch, b_batch, model_fn).compile()
         init_time = time()
-        for i in tqdm(range(self.c.optimization_init_kwargs["n_steps"])):
+        for i in range(self.c.optimization_init_kwargs["n_steps"]):
             template = ("iteration {}, loss_val {}")
             p_key = next(p_batch_keys)
             g_key1 = next(g_batch_keys1)
@@ -349,7 +349,7 @@ class PINN(PINNbase):
             with open(self.c.model_out_dir + "saved_dic_"+str(i)+".pkl","wb") as f:
                 pickle.dump(serialised_model,f)
             
-            print('1st', t_loss, u_loss, v_loss, w_loss, con_loss, NS1_loss, NS2_loss, NS3_loss, u_error, v_error, w_error, p_error)
+            print(str(i), '  1st', t_loss, u_loss, v_loss, w_loss, con_loss, NS1_loss, NS2_loss, NS3_loss, u_error, v_error, w_error, p_error)
 
         return
 
@@ -360,7 +360,7 @@ if __name__=="__main__":
     from PINN_network import *
     from PINN_constants import *
     from PINN_problem import *
-    run = "TBL_run_test60"
+    run = "TBL_run_test64"
     all_params = {"domain":{}, "data":{}, "network":{}, "problem":{}}
 
     # Set Domain params
@@ -378,12 +378,12 @@ if __name__=="__main__":
     
     # Set network params
     key = random.PRNGKey(1)
-    layer_sizes = [4, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 4]
+    layer_sizes = [4, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 4]
     network_name = 'MLP'
 
     # Set problem params
     viscosity = 15e-6
-    loss_weights = (100, 100, 100, 0.0000004, 0.00000004, 0.00000004, 0.00000004)
+    loss_weights = (100, 100, 100, 0.000004, 0.0000004, 0.0000004, 0.0000004)
     path_s = 'Ground/'
     problem_name = 'TBL'
     # Set optimization params
