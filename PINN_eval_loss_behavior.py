@@ -62,7 +62,6 @@ class PINN(PINNbase):
         valid_data = self.c.problem.exact_solution(all_params)
         model_fn = c.network.network_fn
         return all_params, model_fn, train_data, valid_data
-
 #%%
 if __name__ == "__main__":
     from PINN_domain import *
@@ -72,7 +71,7 @@ if __name__ == "__main__":
     from PINN_problem import *
     import argparse
     from glob import glob
-    #checkpoint_fol = "TBL_run_09"
+    #checkpoint_fol = "TBL_run_test61"
     parser = argparse.ArgumentParser(description='TBL_PINN')
     parser.add_argument('-c', '--checkpoint', type=str, help='checkpoint', default="")
     args = parser.parse_args()
@@ -109,7 +108,7 @@ if __name__ == "__main__":
 
     timestep = 24
 
-    datapath = '/scratch/hyun/PG_TBL_dnsinterp.mat'
+    datapath = '/home/hgf_dlr/hgf_dzj2734/TBL/PG_TBL_dnsinterp.mat'
     data = loadmat(datapath)
     eval_key = ['x', 'y', 'z', 'x_pred', 'y_pred', 'z_pred', 'u1', 'v1', 'w1', 'p1', 'um', 'vm', 'wm']
     DNS_grid = (0.001*data['y'][:,0,0], 0.001*data['x'][0,:,0], 0.001*data['z'][0,0,:])
@@ -128,7 +127,9 @@ if __name__ == "__main__":
     checkpoint_list = sorted(glob(run.c.model_out_dir+'/*.pkl'), key=lambda x: int(x.split('_')[4].split('.')[0]))
     pre_error_list = []
     vel_error_list = []
+    g = 0
     for checkpoint in checkpoint_list:
+        print(g)
         with open(checkpoint,'rb') as f:
             a = pickle.load(f)
         all_params, model_fn, train_data, valid_data = run.test()
@@ -165,9 +166,11 @@ if __name__ == "__main__":
 
         pre_error_list.append(np.linalg.norm(pred_[:,-1:].reshape(31,88,410)-p_cent3)/np.linalg.norm(p_cent3))
         vel_error_list.append(np.linalg.norm(f, ord='fro')/np.linalg.norm(div,ord='fro'))
-    pre_error = np.concatenate(pre_error_list)
-    vel_error = np.concatenate(vel_error_list)
+        g = g+1
+    pre_error = np.array(pre_error_list)
+    vel_error = np.array(vel_error_list)
     tol_error = np.concatenate([vel_error.reshape(-1,1),pre_error.reshape(-1,1)],1)
+
     if os.path.isdir("datas/"+checkpoint_fol):
         pass
     else:
@@ -176,3 +179,4 @@ if __name__ == "__main__":
     with open("datas/"+checkpoint_fol+"/error_evolution.pkl","wb") as f:
         pickle.dump(tol_error,f)
     f.close()
+
