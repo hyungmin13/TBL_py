@@ -16,6 +16,24 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import scipy.stats as st
 import h5py
+
+def error_metric(pred, test, div):
+    out = np.linalg.norm(pred-test)/np.linalg.norm(div)
+    return out
+
+def error_metric2(pred, test):
+    f = np.concatenate([(pred[0]-test[0]).reshape(-1,1),
+                        (pred[1]-test[1]).reshape(-1,1),
+                        (pred[2]-test[2]).reshape(-1,1)],1)
+    div = np.concatenate([(test[0]).reshape(-1,1),
+                        (test[1]).reshape(-1,1),
+                        (test[2]).reshape(-1,1)],1)
+    return np.linalg.norm(f, ord='fro')/np.linalg.norm(div, ord='fro')
+
+def NRMSE(pred, test, div):
+    out = np.sqrt(np.mean(np.square(pred-test))/np.mean(np.square(div)))
+    return out
+
 class Model(struct.PyTreeNode):
     params: Any
     forward: callable = struct.field(pytree_node=False)
@@ -86,6 +104,11 @@ if __name__ == "__main__":
 
     model = Model(all_params["network"]["layers"], model_fn)
     all_params["network"]["layers"] = from_state_dict(model, a).params
+#%%
+    u_tau = 15*10**(-6)/36.2/10**(-6)
+    u_ref_n = 4.9968*10**(-2)/u_tau
+    delta = 36.2*10**(-6)
+    x_ref_n = 1.0006*10**(-3)/delta
 #%% temporal error는 51개의 시간단계에대해서 [:,0]는 velocity error, [:,1]은 pressure error
     output_shape = (213,141,61)
     temporal_error_vel_list = []
@@ -99,6 +122,7 @@ if __name__ == "__main__":
         outputs = {output_keys[i]:pred[:,i]*output_unnorm[i] for i in range(len(output_keys))}
         outputs['p'] = outputs['p'] - np.mean(outputs['p'])
         output_ext = {output_keys[i]:valid_data['vel'].reshape((51,)+output_shape+(4,))[j,:,:,:,i].reshape(-1) for i in range(len(output_keys))}
+        output_ext['p'] = output_ext['p'] - 0.0025*all_params['domain']['in_max'][0,1]*valid_data['pos'].reshape((51,)+output_shape+(4,))[0,0,:,0,1]*1.185*x_ref_n/u_ref_n**2
         output_ext['p'] = output_ext['p'] - np.mean(output_ext['p'])
 
 
