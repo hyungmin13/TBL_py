@@ -122,7 +122,7 @@ if __name__ == "__main__":
         outputs = {output_keys[i]:pred[:,i]*output_unnorm[i] for i in range(len(output_keys))}
         outputs['p'] = outputs['p'] - np.mean(outputs['p'])
         output_ext = {output_keys[i]:valid_data['vel'].reshape((51,)+output_shape+(4,))[j,:,:,:,i].reshape(-1) for i in range(len(output_keys))}
-        output_ext['p'] = output_ext['p'] - 0.0025*all_params['domain']['in_max'][0,1]*valid_data['pos'].reshape((51,)+output_shape+(4,))[0,0,:,0,1]*1.185*x_ref_n/u_ref_n**2
+        output_ext['p'] = output_ext['p'] - 0.0025*all_params['domain']['in_max'][0,1]*valid_data['pos'].reshape((51,)+output_shape+(4,))[0,:,:,:,1].reshape(-1)*1.185*x_ref_n/u_ref_n**2
         output_ext['p'] = output_ext['p'] - np.mean(output_ext['p'])
 
 
