@@ -193,6 +193,7 @@ if __name__ == "__main__":
     p_cent3 = p_cent3 - np.mean(p_cent3)    
     indexes, counts = np.unique(train_data['pos'][:,0], return_counts=True)
     g = 0
+    timestep = 25
     for checkpoint in checkpoint_list:
         print(g)
         with open(checkpoint,'rb') as f:
@@ -203,9 +204,14 @@ if __name__ == "__main__":
         all_params["network"]["layers"] = from_state_dict(model, a).params
 
 
-        acc = np.concatenate([acc_cal(all_params["network"]["layers"], all_params, train_data['pos'][np.sum(counts[:j]):np.sum(counts[:(j+1)])][10000*s:10000*(s+1)], model_fn) 
-                              for s in range(train_data['pos'][np.sum(counts[:j]):np.sum(counts[:(j+1)])].shape[0]//10000+1)],0)
-        pred = np.concatenate([model_fn(all_params, eval_grid_n[10000*i:10000*(i+1),:]) for i in range(eval_grid_n.shape[0]//10000+1)],0)
+        acc = np.concatenate([acc_cal(all_params["network"]["layers"], 
+                                      all_params, 
+                                      train_data['pos'][np.sum(counts[:timestep]):np.sum(counts[:(timestep+1)])][10000*s:10000*(s+1)], 
+                                      model_fn) 
+                              for s in range(train_data['pos'][np.sum(counts[:timestep]):np.sum(counts[:(timestep+1)])].shape[0]//10000+1)],0)
+        pred = np.concatenate([model_fn(all_params, 
+                                        eval_grid_n[10000*i:10000*(i+1),:]) 
+                               for i in range(eval_grid_n.shape[0]//10000+1)],0)
         ref_key = ['t_ref', 'x_ref', 'y_ref', 'z_ref', 'u_ref', 'v_ref', 'w_ref', 'u_ref']
         pred_ = np.concatenate([pred[:,i:i+1]*ref_data[ref_key[i+4]] for i in range(4)],1)
         pred_[:,-1] = pred_[:,-1]*1.185

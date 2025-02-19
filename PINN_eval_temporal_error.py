@@ -61,6 +61,56 @@ class PINN(PINNbase):
         model_fn = c.network.network_fn
         return all_params, model_fn, train_data, valid_data
 
+def equ_func(all_params, g_batch, cotangent, model_fns):
+    def u_t(batch):
+        return model_fns(all_params, batch)
+    def u_tt(batch):
+        return jax.jvp(u_t,(batch,), (cotangent, ))[1]
+    out_x, out_xx = jax.jvp(u_tt, (g_batch,), (cotangent,))
+    return out_x, out_xx
+
+def equ_func2(all_params, g_batch, cotangent, model_fns):
+    def u_t(batch):
+        return model_fns(all_params, batch)
+    out, out_t = jax.jvp(u_t, (g_batch,), (cotangent,))
+    return out, out_t
+
+def acc_cal(dynamic_params, all_params, g_batch, model_fns):
+    all_params["network"]["layers"] = dynamic_params
+    weights = all_params["problem"]["loss_weights"]
+    out, out_t = equ_func2(all_params, g_batch, jnp.tile(jnp.array([[1.0, 0.0, 0.0, 0.0]]),(g_batch.shape[0],1)),model_fns)
+    _, out_x = equ_func2(all_params, g_batch, jnp.tile(jnp.array([[0.0, 1.0, 0.0, 0.0]]),(g_batch.shape[0],1)),model_fns)
+    _, out_y = equ_func2(all_params, g_batch, jnp.tile(jnp.array([[0.0, 0.0, 1.0, 0.0]]),(g_batch.shape[0],1)),model_fns)
+    _, out_z = equ_func2(all_params, g_batch, jnp.tile(jnp.array([[0.0, 0.0, 0.0, 1.0]]),(g_batch.shape[0],1)),model_fns)
+
+    u = all_params["data"]['u_ref']*out[:,0:1]
+    v = all_params["data"]['v_ref']*out[:,1:2]
+    w = all_params["data"]['w_ref']*out[:,2:3]
+
+    ut = all_params["data"]['u_ref']*out_t[:,0:1]/all_params["data"]["domain_range"]["t"][1]
+    vt = all_params["data"]['v_ref']*out_t[:,1:2]/all_params["data"]["domain_range"]["t"][1]
+    wt = all_params["data"]['w_ref']*out_t[:,2:3]/all_params["data"]["domain_range"]["t"][1]
+
+    ux = all_params["data"]['u_ref']*out_x[:,0:1]/all_params["data"]["domain_range"]["x"][1]
+    vx = all_params["data"]['v_ref']*out_x[:,1:2]/all_params["data"]["domain_range"]["x"][1]
+    wx = all_params["data"]['w_ref']*out_x[:,2:3]/all_params["data"]["domain_range"]["x"][1]
+    px = all_params["data"]['u_ref']*out_x[:,3:4]/all_params["data"]["domain_range"]["x"][1]
+
+    uy = all_params["data"]['u_ref']*out_y[:,0:1]/all_params["data"]["domain_range"]["y"][1]
+    vy = all_params["data"]['v_ref']*out_y[:,1:2]/all_params["data"]["domain_range"]["y"][1]
+    wy = all_params["data"]['w_ref']*out_y[:,2:3]/all_params["data"]["domain_range"]["y"][1]
+    py = all_params["data"]['u_ref']*out_y[:,3:4]/all_params["data"]["domain_range"]["y"][1]
+
+    uz = all_params["data"]['u_ref']*out_z[:,0:1]/all_params["data"]["domain_range"]["z"][1]
+    vz = all_params["data"]['v_ref']*out_z[:,1:2]/all_params["data"]["domain_range"]["z"][1]
+    wz = all_params["data"]['w_ref']*out_z[:,2:3]/all_params["data"]["domain_range"]["z"][1]
+    pz = all_params["data"]['u_ref']*out_z[:,3:4]/all_params["data"]["domain_range"]["z"][1]
+    
+    acc_x = ut + u*ux + v*uy + w*uz
+    acc_y = vt + u*vx + v*vy + w*vz
+    acc_z = wt + u*wx + v*wy + w*wz
+    acc = np.concatenate([acc_x.reshape(-1,1), acc_y.reshape(-1,1), acc_z.reshape(-1,1)],1)
+    return acc
 #%%
 if __name__ == "__main__":
     from PINN_domain import *
@@ -70,7 +120,7 @@ if __name__ == "__main__":
     from PINN_problem import *
     import argparse
     from glob import glob
-    #checkpoint_fol = "TBL_run_09"
+    #checkpoint_fol = "TBL_run_test36"
     parser = argparse.ArgumentParser(description='TBL_PINN')
     parser.add_argument('-c', '--checkpoint', type=str, help='checkpoint', default="")
     args = parser.parse_args()
@@ -104,17 +154,23 @@ if __name__ == "__main__":
 
     model = Model(all_params["network"]["layers"], model_fn)
     all_params["network"]["layers"] = from_state_dict(model, a).params
+    dynamic_params = all_params["network"]["layers"]
+    indexes, counts = np.unique(train_data['pos'][:,0], return_counts=True)
 #%%
     u_tau = 15*10**(-6)/36.2/10**(-6)
     u_ref_n = 4.9968*10**(-2)/u_tau
     delta = 36.2*10**(-6)
     x_ref_n = 1.0006*10**(-3)/delta
+
 #%% temporal error는 51개의 시간단계에대해서 [:,0]는 velocity error, [:,1]은 pressure error
     output_shape = (213,141,61)
     temporal_error_vel_list = []
     temporal_error_pre_list = []
+    temporal_error_acc_list = []
     for j in range(51):
         print(j)
+        acc = np.concatenate([acc_cal(all_params["network"]["layers"], all_params, train_data['pos'][np.sum(counts[:j]):np.sum(counts[:(j+1)])][10000*s:10000*(s+1)], model_fn) 
+                              for s in range(train_data['pos'][np.sum(counts[:j]):np.sum(counts[:(j+1)])].shape[0]//10000+1)],0)
         pred = model_fn(all_params, valid_data['pos'].reshape((51,)+output_shape+(4,))[j,:,:,:,:].reshape(-1,4))
         output_keys = ['u', 'v', 'w', 'p']
         output_unnorm = [all_params["data"]['u_ref'],all_params["data"]['v_ref'],
@@ -131,13 +187,19 @@ if __name__ == "__main__":
                             (outputs['w']-output_ext['w']).reshape(-1,1)],1)
         div = np.concatenate([output_ext['u'].reshape(-1,1), output_ext['v'].reshape(-1,1), 
                             output_ext['w'].reshape(-1,1)],1)
-
+        f2 = np.concatenate([(acc[:,0]-train_data['acc'][np.sum(counts[:j]):np.sum(counts[:(j+1)])][:,0]).reshape(-1,1), 
+                             (acc[:,1]-train_data['acc'][np.sum(counts[:j]):np.sum(counts[:(j+1)])][:,1]).reshape(-1,1), 
+                             (acc[:,2]-train_data['acc'][np.sum(counts[:j]):np.sum(counts[:(j+1)])][:,2]).reshape(-1,1)],1)
+        div2 = np.concatenate([train_data['acc'][:,0].reshape(-1,1), train_data['acc'][:,1].reshape(-1,1), 
+                               train_data['acc'][:,2].reshape(-1,1)],1)  
         temporal_error_pre_list.append(np.linalg.norm(outputs['p'] - output_ext['p'])/np.linalg.norm(output_ext['p']))
         temporal_error_vel_list.append(np.linalg.norm(f, ord='fro')/np.linalg.norm(div,ord='fro'))    
-
+        temporal_error_acc_list.append(np.linalg.norm(f2, ord='fro')/np.linalg.norm(div2,ord='fro'))
     temporal_error = np.concatenate([np.array(temporal_error_vel_list).reshape(-1,1),
-                                     np.array(temporal_error_pre_list).reshape(-1,1)],1)
+                                     np.array(temporal_error_pre_list).reshape(-1,1),
+                                     np.array(temporal_error_acc_list).reshape(-1,1)],1)
 
+#%%
     if os.path.isdir("datas/"+checkpoint_fol):
         pass
     else:
