@@ -212,12 +212,12 @@ if __name__ == "__main__":
                              (acc[:,2]-train_data['acc'][np.sum(counts[:j]):np.sum(counts[:(j+1)])][:,2]).reshape(-1,1)],1)
         div2 = np.concatenate([train_data['acc'][:,0].reshape(-1,1), train_data['acc'][:,1].reshape(-1,1), 
                                train_data['acc'][:,2].reshape(-1,1)],1)
-        f3 = np.concatenate([(acc_pred_v[:,0]-acc_v[np.sum(counts[:j]):np.sum(counts[:(j+1)])][:,0]).reshape(-1,1), 
-                             (acc_pred_v[:,1]-acc_v[np.sum(counts[:j]):np.sum(counts[:(j+1)])][:,1]).reshape(-1,1), 
-                             (acc_pred_v[:,2]-acc_v[np.sum(counts[:j]):np.sum(counts[:(j+1)])][:,2]).reshape(-1,1)],1)
-        div3 = np.concatenate([acc_v[np.sum(counts[:j]):np.sum(counts[:(j+1)])][:,0].reshape(-1,1), 
-                               acc_v[np.sum(counts[:j]):np.sum(counts[:(j+1)])][:,1].reshape(-1,1), 
-                               acc_v[np.sum(counts[:j]):np.sum(counts[:(j+1)])][:,2].reshape(-1,1)],1)  
+        f3 = np.concatenate([(acc_pred_v[:,0]-acc_v[np.sum(counts2[:j]):np.sum(counts2[:(j+1)])][:,0]).reshape(-1,1), 
+                             (acc_pred_v[:,1]-acc_v[np.sum(counts2[:j]):np.sum(counts2[:(j+1)])][:,1]).reshape(-1,1), 
+                             (acc_pred_v[:,2]-acc_v[np.sum(counts2[:j]):np.sum(counts2[:(j+1)])][:,2]).reshape(-1,1)],1)
+        div3 = np.concatenate([acc_v[np.sum(counts2[:j]):np.sum(counts2[:(j+1)])][:,0].reshape(-1,1), 
+                               acc_v[np.sum(counts2[:j]):np.sum(counts2[:(j+1)])][:,1].reshape(-1,1), 
+                               acc_v[np.sum(counts2[:j]):np.sum(counts2[:(j+1)])][:,2].reshape(-1,1)],1)  
         temporal_error_pre_list.append(np.linalg.norm(outputs['p'] - output_ext['p'])/np.linalg.norm(output_ext['p']))
         temporal_error_vel_list.append(np.linalg.norm(f, ord='fro')/np.linalg.norm(div,ord='fro'))    
         temporal_error_acc_list.append(np.linalg.norm(f2, ord='fro')/np.linalg.norm(div2,ord='fro'))
