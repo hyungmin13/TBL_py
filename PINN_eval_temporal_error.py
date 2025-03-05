@@ -186,7 +186,7 @@ if __name__ == "__main__":
     temporal_error_acc_list = []
     temporal_error_acc_v_list = []
     acc_v_list = []
-    for j in range(51):
+    for j in range(counts.shape[0]):
         print(j)
         acc = np.concatenate([acc_cal(all_params["network"]["layers"], all_params, train_data['pos'][np.sum(counts[:j]):np.sum(counts[:(j+1)])][10000*s:10000*(s+1)], model_fn) 
                               for s in range(train_data['pos'][np.sum(counts[:j]):np.sum(counts[:(j+1)])].shape[0]//10000+1)],0)
@@ -224,6 +224,8 @@ if __name__ == "__main__":
         temporal_error_acc_v_list.append(np.linalg.norm(f3, ord='fro')/np.linalg.norm(div3,ord='fro'))
         acc_v_list.append(acc_pred_v)
     acc_v_list = np.concatenate(acc_v_list,0)
+    print(acc_v_list.shape, acc_v.shape)
+    acc_v_list = np.concatenate([acc_v_list, acc_v],1)
     temporal_error = np.concatenate([np.array(temporal_error_vel_list).reshape(-1,1),
                                      np.array(temporal_error_pre_list).reshape(-1,1),
                                      np.array(temporal_error_acc_list).reshape(-1,1),
