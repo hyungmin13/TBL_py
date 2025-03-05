@@ -120,19 +120,18 @@ if __name__ == "__main__":
     from PINN_problem import *
     import argparse
     from glob import glob
-    checkpoint_fol = "TBL_SOAP_k1"
-    #parser = argparse.ArgumentParser(description='TBL_PINN')
-    #parser.add_argument('-c', '--checkpoint', type=str, help='checkpoint', default="")
-    #args = parser.parse_args()
-    #checkpoint_fol = args.checkpoint
+    #checkpoint_fol = "TBL_SOAP_k1"
+    parser = argparse.ArgumentParser(description='TBL_PINN')
+    parser.add_argument('-c', '--checkpoint', type=str, help='checkpoint', default="")
+    args = parser.parse_args()
+    checkpoint_fol = args.checkpoint
     print(checkpoint_fol, type(checkpoint_fol))
     path = "results/summaries/"
     with open(path+checkpoint_fol+'/constants_'+ str(checkpoint_fol) +'.pickle','rb') as f:
         a = pickle.load(f)
-    a['data_init_kwargs']['path'] = '/scratch/hyun/TBL/'
-    a['problem_init_kwargs']['path_s'] = '/scratch/hyun/Ground/'
-    with open(path+checkpoint_fol+'/constants_'+ str(checkpoint_fol) +'.pickle','wb') as f:
-        pickle.dump(a,f)
+    a['data_init_kwargs']['path'] = 'DNS/'
+    a['problem_init_kwargs']['path_s'] = 'Ground/'
+
 
     values = list(a.values())
 
