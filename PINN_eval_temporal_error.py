@@ -156,7 +156,6 @@ if __name__ == "__main__":
     all_params["network"]["layers"] = from_state_dict(model, a).params
     dynamic_params = all_params["network"]["layers"]
     indexes, counts = np.unique(train_data['pos'][:,0], return_counts=True)
-#%%
     indexes2, counts2 = np.unique(valid2_data['pos'][:,0], return_counts=True)
     pos_v = []
     vel_v = []
@@ -164,9 +163,9 @@ if __name__ == "__main__":
     c = 0
 
     for i in range(len(counts2)):
-        pos_v.append(valid2_data['pos'][c+200000:c+counts2[i],:])
-        vel_v.append(valid2_data['vel'][c+200000:c+counts2[i],:])
-        acc_v.append(valid2_data['acc'][c+200000:c+counts2[i],:])
+        pos_v.append(valid2_data['pos'][c+210750:c+counts2[i],:])
+        vel_v.append(valid2_data['vel'][c+210750:c+counts2[i],:])
+        acc_v.append(valid2_data['acc'][c+210750:c+counts2[i],:])
         c = c+counts2[i]
     pos_v = np.concatenate(pos_v,0)
     vel_v = np.concatenate(vel_v,0)
